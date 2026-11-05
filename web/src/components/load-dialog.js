@@ -1,10 +1,7 @@
 import { LitElement, html } from 'lit';
 import '@vaadin/button';
-import '@vaadin/checkbox';
 import '@vaadin/combo-box';
 import '@vaadin/icon';
-import '@vaadin/number-field';
-import { copyToClipboard } from '../utils/clipboard.js';
 import { formatContextTokens } from '../utils/format.js';
 
 const CONTEXT_PRESETS = [2048, 4096, 8192, 16384, 32768, 65536, 131072];
@@ -14,7 +11,6 @@ export class LoadModelDialog extends LitElement {
     opened: { type: Boolean },
     model: { type: Object },
     defaultContextLength: { type: Number },
-    lmstudioUrl: { type: String },
     selectedModelId: { type: String },
     contextLength: { type: Number },
     evalBatchSize: { type: Number },
@@ -25,7 +21,7 @@ export class LoadModelDialog extends LitElement {
   };
 
   createRenderRoot() {
-    return this; // Light DOM to use Vaadin Lumo tokens directly
+    return this;
   }
 
   constructor() {
@@ -33,7 +29,6 @@ export class LoadModelDialog extends LitElement {
     this.opened = false;
     this.model = null;
     this.defaultContextLength = 8192;
-    this.lmstudioUrl = 'http://localhost:1234';
     this.selectedModelId = '';
     this.contextLength = 8192;
     this.evalBatchSize = 512;
@@ -131,22 +126,6 @@ export class LoadModelDialog extends LitElement {
     return payload;
   }
 
-  buildCurlPreview() {
-    const payload = this.buildPayload();
-    return `curl ${this.lmstudioUrl}/api/v1/models/load \\\n  -H "Content-Type: application/json" \\\n  -d '${JSON.stringify(payload, null, 2)}'`;
-  }
-
-  copyCurl(e) {
-    const text = this.buildCurlPreview();
-    copyToClipboard(text);
-    const btn = e.currentTarget;
-    const orig = btn.innerText;
-    btn.innerText = 'Copied';
-    setTimeout(() => {
-      btn.innerText = orig;
-    }, 1200);
-  }
-
   submitLoad() {
     const payload = this.buildPayload();
     this.dispatchEvent(
@@ -170,36 +149,12 @@ export class LoadModelDialog extends LitElement {
     return html`
       <dialog
         id="load-model-dialog"
+        class="app-modal-dialog"
         closedby="any"
         aria-labelledby="load-dialog-title"
-        style="
-          margin: auto;
-          padding: var(--lumo-space-l);
-          max-width: 580px;
-          width: calc(100vw - 32px);
-          box-sizing: border-box;
-          border: 1px solid var(--lumo-contrast-20pct);
-          border-radius: var(--lumo-border-radius-l);
-          background-color: var(--lumo-base-color);
-          color: var(--lumo-body-text-color);
-          box-shadow: var(--lumo-box-shadow-xl);
-        "
       >
-        <div
-          id="load-dialog-title"
-          style="
-            font-size: var(--lumo-font-size-l);
-            font-weight: 600;
-            margin-bottom: var(--lumo-space-s);
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-          "
-        >
-          <span style="display: inline-flex; align-items: center; gap: var(--lumo-space-s);">
-            <vaadin-icon ligature="memory" style="color: var(--lumo-primary-color);"></vaadin-icon>
-            <span>Load Model into Memory</span>
-          </span>
+        <div class="modal-header" id="load-dialog-title">
+          <span>Load ${m ? m.display_name : 'Model'}</span>
           <button type="button" class="icon-btn" @click=${() => this.close()} aria-label="Close">
             <vaadin-icon ligature="close"></vaadin-icon>
           </button>
@@ -207,17 +162,16 @@ export class LoadModelDialog extends LitElement {
 
         ${m
           ? html`
-              <div style="display: flex; flex-direction: column; gap: var(--lumo-space-m);">
-                <div style="display: flex; align-items: center; gap: var(--lumo-space-xs); flex-wrap: wrap;">
-                  <span style="font-weight: 600;">${m.display_name}</span>
-                  <span class="raw-token">${m.key}</span>
-                  ${m.format ? html`<span class="state-badge state-idle">${m.format}</span>` : ''}
+              <div class="modal-body">
+                <div class="meta-inline">
+                  <span class="raw-token">${m.selected_variant || m.key}</span>
+                  ${m.format ? html`<span class="raw-token">${m.format.toUpperCase()}</span>` : ''}
                 </div>
 
                 ${variants.length > 1
                   ? html`
                       <vaadin-combo-box
-                        label="Model Variant"
+                        label="Quantization Variant"
                         .items=${variants}
                         .value=${this.selectedModelId}
                         @value-changed=${(e) => {
@@ -227,15 +181,12 @@ export class LoadModelDialog extends LitElement {
                     `
                   : ''}
 
-                <div>
-                  <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px;">
-                    <label
-                      style="font-size: var(--lumo-font-size-xs); font-weight: 600; color: var(--lumo-secondary-text-color);"
-                    >
-                      Context Length (tokens)
-                      ${maxCtx ? html`<span style="font-weight: 400;"> (Max: ${formatContextTokens(maxCtx)})</span>` : ''}
+                <div class="field-group">
+                  <div class="field-label-row">
+                    <label for="load-context-length-input">
+                      Context Length ${maxCtx ? `(max ${formatContextTokens(maxCtx)})` : ''}
                     </label>
-                    <div style="display: flex; gap: 4px; flex-wrap: wrap;">
+                    <div class="preset-chips">
                       ${presets.map(
                         (p) => html`
                           <button
@@ -245,7 +196,7 @@ export class LoadModelDialog extends LitElement {
                               this.contextLength = p;
                             }}
                           >
-                            ${ p === maxCtx ? `Max (${formatContextTokens(p)})` : formatContextTokens(p) }
+                            ${p === maxCtx ? `Max (${formatContextTokens(p)})` : formatContextTokens(p)}
                           </button>
                         `
                       )}
@@ -253,6 +204,7 @@ export class LoadModelDialog extends LitElement {
                   </div>
                   <input
                     id="load-context-length-input"
+                    class="text-input mono"
                     type="number"
                     min="512"
                     max="${maxCtx || 1048576}"
@@ -261,31 +213,17 @@ export class LoadModelDialog extends LitElement {
                     @input=${(e) => {
                       this.contextLength = Number(e.target.value || 4096);
                     }}
-                    style="
-                      width: 100%;
-                      box-sizing: border-box;
-                      padding: 6px 10px;
-                      border-radius: var(--lumo-border-radius-m);
-                      border: 1px solid var(--lumo-contrast-20pct);
-                      background: var(--lumo-contrast-5pct);
-                      color: var(--lumo-body-text-color);
-                      font-family: var(--lumo-font-family-monospace, monospace);
-                      font-size: var(--lumo-font-size-s);
-                    "
                   />
                 </div>
 
                 ${this.supportsLlamaCppTuning
                   ? html`
                       <div class="form-grid">
-                        <div>
-                          <label
-                            style="display: block; font-size: var(--lumo-font-size-xs); font-weight: 600; color: var(--lumo-secondary-text-color); margin-bottom: 4px;"
-                          >
-                            Eval Batch Size
-                          </label>
+                        <div class="field-group">
+                          <label for="load-batch-size-input">Eval Batch Size</label>
                           <input
                             id="load-batch-size-input"
+                            class="text-input mono"
                             type="number"
                             min="32"
                             max="8192"
@@ -294,28 +232,14 @@ export class LoadModelDialog extends LitElement {
                             @input=${(e) => {
                               this.evalBatchSize = Number(e.target.value || 512);
                             }}
-                            style="
-                              width: 100%;
-                              box-sizing: border-box;
-                              padding: 6px 10px;
-                              border-radius: var(--lumo-border-radius-m);
-                              border: 1px solid var(--lumo-contrast-20pct);
-                              background: var(--lumo-contrast-5pct);
-                              color: var(--lumo-body-text-color);
-                              font-family: var(--lumo-font-family-monospace, monospace);
-                              font-size: var(--lumo-font-size-s);
-                            "
                           />
                         </div>
 
-                        <div>
-                          <label
-                            style="display: block; font-size: var(--lumo-font-size-xs); font-weight: 600; color: var(--lumo-secondary-text-color); margin-bottom: 4px;"
-                          >
-                            MoE Experts (0 = Default)
-                          </label>
+                        <div class="field-group">
+                          <label for="load-num-experts-input">MoE Experts (0 = Default)</label>
                           <input
                             id="load-num-experts-input"
+                            class="text-input mono"
                             type="number"
                             min="0"
                             max="256"
@@ -324,22 +248,11 @@ export class LoadModelDialog extends LitElement {
                             @input=${(e) => {
                               this.numExperts = Number(e.target.value || 0);
                             }}
-                            style="
-                              width: 100%;
-                              box-sizing: border-box;
-                              padding: 6px 10px;
-                              border-radius: var(--lumo-border-radius-m);
-                              border: 1px solid var(--lumo-contrast-20pct);
-                              background: var(--lumo-contrast-5pct);
-                              color: var(--lumo-body-text-color);
-                              font-family: var(--lumo-font-family-monospace, monospace);
-                              font-size: var(--lumo-font-size-s);
-                            "
                           />
                         </div>
                       </div>
 
-                      <div style="display: flex; gap: var(--lumo-space-m); flex-wrap: wrap;">
+                      <div class="toggle-row">
                         <label class="compact-toggle">
                           <input
                             id="load-flash-attention-checkbox"
@@ -349,7 +262,7 @@ export class LoadModelDialog extends LitElement {
                               this.flashAttention = e.target.checked;
                             }}
                           />
-                          <span>Flash Attention (<span class="raw-token flag">flash_attention</span>)</span>
+                          <span>Flash Attention</span>
                         </label>
 
                         <label class="compact-toggle">
@@ -361,31 +274,13 @@ export class LoadModelDialog extends LitElement {
                               this.offloadKvCacheToGpu = e.target.checked;
                             }}
                           />
-                          <span>Offload KV Cache to GPU (<span class="raw-token flag">offload_kv_cache_to_gpu</span>)</span>
+                          <span>Offload KV Cache to GPU</span>
                         </label>
                       </div>
                     `
-                  : html`
-                      <div style="font-size: var(--lumo-font-size-xs); color: var(--lumo-secondary-text-color);">
-                        Additional engine parameters (<span class="raw-token flag">flash_attention</span>,
-                        <span class="raw-token flag">eval_batch_size</span>,
-                        <span class="raw-token flag">offload_kv_cache_to_gpu</span>) apply only to GGUF/llama.cpp LLMs.
-                      </div>
-                    `}
+                  : ''}
 
-                <div>
-                  <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px;">
-                    <span style="font-size: var(--lumo-font-size-xxs); font-weight: 600; color: var(--lumo-secondary-text-color); text-transform: uppercase;">
-                      REST API Request Preview
-                    </span>
-                    <button type="button" class="chip-btn" @click=${(e) => this.copyCurl(e)}>
-                      Copy curl
-                    </button>
-                  </div>
-                  <pre class="command-box">${this.buildCurlPreview()}</pre>
-                </div>
-
-                <div style="display: flex; justify-content: flex-end; gap: var(--lumo-space-s); margin-top: var(--lumo-space-xs);">
+                <div class="modal-footer">
                   <vaadin-button theme="tertiary" @click=${() => this.close()}>
                     Cancel
                   </vaadin-button>

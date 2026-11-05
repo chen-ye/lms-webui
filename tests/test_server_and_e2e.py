@@ -309,9 +309,11 @@ if __name__ == "__main__":
         # Verify Gemma is now shown as loaded
         page.wait_for_selector('.model-card[data-model-key="google/gemma-4-12b"].is-loaded')
 
-        # 3. Switch to Downloads view and trigger a model download
-        page.click("#pull-model-header-btn")
+        # 3. Switch to Discover & Download view via view-switcher-control, verify catalog & trigger a download
+        page.locator("#view-switcher-control").locator("button").nth(1).click()
         page.wait_for_selector("#download-model-input")
+        page.wait_for_selector("[data-catalog-slug]")
+        assert "https://lmstudio.ai/models" in page.content()
         page.fill("#download-model-input", "ibm/granite-4-micro")
         page.click("#start-download-btn")
         page.wait_for_selector('[data-job-id="job_mock_999"]')

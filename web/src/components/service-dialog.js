@@ -1,7 +1,6 @@
 import { LitElement, html } from 'lit';
 import '@vaadin/button';
 import '@vaadin/icon';
-import { copyToClipboard } from '../utils/clipboard.js';
 
 export class ServiceDialog extends LitElement {
   static properties = {
@@ -76,53 +75,18 @@ export class ServiceDialog extends LitElement {
     );
   }
 
-  copyCmd(cmd, e) {
-    copyToClipboard(cmd);
-    const btn = e.currentTarget;
-    const orig = btn.innerText;
-    btn.innerText = 'Copied';
-    setTimeout(() => {
-      btn.innerText = orig;
-    }, 1200);
-  }
-
   render() {
     const svc = this.service;
-    const cliInstallCmd = `uv run lms-webui service install --port ${svc?.port || 8420}`;
 
     return html`
       <dialog
         id="service-manager-dialog"
+        class="app-modal-dialog"
         closedby="any"
         aria-labelledby="service-dialog-title"
-        style="
-          margin: auto;
-          padding: var(--lumo-space-l);
-          max-width: 580px;
-          width: calc(100vw - 32px);
-          box-sizing: border-box;
-          border: 1px solid var(--lumo-contrast-20pct);
-          border-radius: var(--lumo-border-radius-l);
-          background-color: var(--lumo-base-color);
-          color: var(--lumo-body-text-color);
-          box-shadow: var(--lumo-box-shadow-xl);
-        "
       >
-        <div
-          id="service-dialog-title"
-          style="
-            font-size: var(--lumo-font-size-l);
-            font-weight: 600;
-            margin-bottom: var(--lumo-space-s);
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-          "
-        >
-          <span style="display: inline-flex; align-items: center; gap: var(--lumo-space-s);">
-            <vaadin-icon ligature="settings_applications" style="color: var(--lumo-primary-color);"></vaadin-icon>
-            <span>Host Background Service (${svc?.service_manager || 'launchd / systemd'})</span>
-          </span>
+        <div class="modal-header" id="service-dialog-title">
+          <span>Background Service (${svc?.service_manager || 'launchd / systemd'})</span>
           <button type="button" class="icon-btn" @click=${() => this.close()} aria-label="Close">
             <vaadin-icon ligature="close"></vaadin-icon>
           </button>
@@ -130,45 +94,32 @@ export class ServiceDialog extends LitElement {
 
         ${svc
           ? html`
-              <div style="display: flex; flex-direction: column; gap: var(--lumo-space-m); font-size: var(--lumo-font-size-s);">
-                <div style="display: flex; align-items: center; gap: var(--lumo-space-s); flex-wrap: wrap;">
+              <div class="modal-body">
+                <div class="meta-inline">
                   <span class="state-badge ${svc.running ? 'state-running' : svc.installed ? 'state-building' : 'state-idle'}">
                     <span class="status-dot ${svc.running ? 'dot-ready' : svc.installed ? 'dot-starting' : 'dot-offline'}"></span>
                     ${svc.running ? 'Running' : svc.installed ? 'Installed (Stopped)' : 'Not Installed'}
                   </span>
                   <span class="raw-token">${svc.service_name}</span>
-                  <span class="raw-token flag">${svc.platform} • ${svc.service_manager}</span>
+                  <span class="raw-token">${svc.platform}</span>
                 </div>
 
-                <div>
-                  <div style="font-size: var(--lumo-font-size-xxs); font-weight: 600; color: var(--lumo-secondary-text-color); text-transform: uppercase; margin-bottom: 4px;">
-                    Service Unit Path
+                <div class="kv-stack">
+                  <div class="kv-row">
+                    <span class="kv-label">Unit File</span>
+                    <span class="raw-token path">${svc.unit_path}</span>
                   </div>
-                  <div class="raw-token path" style="width: 100%; justify-content: flex-start; box-sizing: border-box; padding: 4px 8px;">
-                    ${svc.unit_path}
+                  <div class="kv-row">
+                    <span class="kv-label">Command</span>
+                    <code class="code-inline">${svc.exec_start}</code>
+                  </div>
+                  <div class="kv-row">
+                    <span class="kv-label">CLI</span>
+                    <code class="code-inline">uv run lms-webui service install --port ${svc.port || 8420}</code>
                   </div>
                 </div>
 
-                <div>
-                  <div style="font-size: var(--lumo-font-size-xxs); font-weight: 600; color: var(--lumo-secondary-text-color); text-transform: uppercase; margin-bottom: 4px;">
-                    ExecStart Command
-                  </div>
-                  <pre class="command-box">${svc.exec_start}</pre>
-                </div>
-
-                <div>
-                  <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px;">
-                    <span style="font-size: var(--lumo-font-size-xxs); font-weight: 600; color: var(--lumo-secondary-text-color); text-transform: uppercase;">
-                      CLI Registration Equivalent
-                    </span>
-                    <button type="button" class="chip-btn" @click=${(e) => this.copyCmd(cliInstallCmd, e)}>
-                      Copy CLI
-                    </button>
-                  </div>
-                  <pre class="command-box">${cliInstallCmd}</pre>
-                </div>
-
-                <div style="display: flex; justify-content: space-between; align-items: center; gap: var(--lumo-space-s); flex-wrap: wrap; margin-top: var(--lumo-space-xs);">
+                <div class="modal-footer-split">
                   <div>
                     ${svc.installed
                       ? html`
@@ -178,12 +129,12 @@ export class ServiceDialog extends LitElement {
                             ?disabled=${this.busy}
                             @click=${() => this.emitAction('uninstall')}
                           >
-                            Uninstall Service
+                            Uninstall
                           </vaadin-button>
                         `
                       : ''}
                   </div>
-                  <div style="display: flex; gap: var(--lumo-space-s);">
+                  <div class="modal-footer-actions">
                     <vaadin-button theme="tertiary" @click=${() => this.close()}>
                       Close
                     </vaadin-button>
@@ -195,7 +146,7 @@ export class ServiceDialog extends LitElement {
                             ?disabled=${this.busy}
                             @click=${() => this.emitAction('restart')}
                           >
-                            Restart Service
+                            Restart
                           </vaadin-button>
                         `
                       : ''}
@@ -205,7 +156,7 @@ export class ServiceDialog extends LitElement {
                       ?disabled=${this.busy}
                       @click=${() => this.emitAction('install')}
                     >
-                      ${svc.installed ? 'Update & Restart Service' : 'Install Background Service'}
+                      ${svc.installed ? 'Update Service' : 'Install Service'}
                     </vaadin-button>
                   </div>
                 </div>

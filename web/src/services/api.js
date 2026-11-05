@@ -1,6 +1,6 @@
 /**
  * Reactive API Client for LM Studio Model Manager WebUI
- * Exposes TC39 Signals (`@lit-labs/signals`) for models, loaded instances, downloads, and service state.
+ * Exposes TC39 Signals (`@lit-labs/signals`) for models, downloads, catalog discovery, and service state.
  */
 
 import { computed, signal } from '@lit-labs/signals';
@@ -26,6 +26,12 @@ export class LmsApiClient {
     this.modelsLoadingSignal = signal(true);
     this.downloadsSignal = signal([]);
     this.downloadsLoadingSignal = signal(false);
+
+    this.catalogFamiliesSignal = signal([]);
+    this.catalogLoadingSignal = signal(false);
+    this.hfModelsSignal = signal([]);
+    this.hfLoadingSignal = signal(false);
+
     this.busyActionSignal = signal('');
     this.toastSignal = signal(null);
 
@@ -40,10 +46,6 @@ export class LmsApiClient {
             remaining_ttl_seconds: inst.remaining_ttl_seconds ?? null,
             model_key: m.key,
             display_name: m.display_name || m.key,
-            format: m.format,
-            quantization: m.quantization?.name || '',
-            origin: m.origin,
-            device_name: m.device_name,
           });
         }
       }
@@ -185,7 +187,7 @@ export class LmsApiClient {
         throw new Error(err.detail || `Delete failed (${res.status})`);
       }
       const data = await res.json();
-      this.showToast(`Deleted ${selected_variant || key} (${(data.removed_paths || []).length} path(s))`, 'success');
+      this.showToast(`Deleted ${selected_variant || key}`, 'success');
       await Promise.all([this.fetchModels({ silent: true }), this.fetchStatus()]);
       return data;
     } finally {
@@ -211,7 +213,7 @@ export class LmsApiClient {
   }
 
   async startDownload({ model, quantization }) {
-    this.busyActionSignal.set('download');
+    this.busyActionSignal.set(`download:${model}`);
     try {
       const res = await fetch(`${this.baseUrl}/api/models/download`, {
         method: 'POST',
@@ -224,7 +226,7 @@ export class LmsApiClient {
       }
       const data = await res.json();
       if (data.status === 'already_downloaded') {
-        this.showToast(`Model '${model}' is already downloaded`, 'info');
+        this.showToast(`'${model}' is already downloaded`, 'info');
       } else {
         this.showToast(`Download started (${data.job_id || data.status})`, 'success');
       }
@@ -241,6 +243,50 @@ export class LmsApiClient {
     );
     if (!res.ok) return { is_hf: false, quantizations: [] };
     return await res.json();
+  }
+
+  async fetchCatalog(query = '') {
+    this.catalogLoadingSignal.set(true);
+    try {
+      const res = await fetch(
+        `${this.baseUrl}/api/catalog?q=${encodeURIComponent(query || '')}`
+      );
+      if (res.ok) {
+        const data = await res.json();
+        this.catalogFamiliesSignal.set(data.families || []);
+        return data.families || [];
+      }
+    } catch (e) {
+      // ignore offline error
+    } finally {
+      this.catalogLoadingSignal.set(false);
+    }
+    return this.catalogFamiliesSignal.get();
+  }
+
+  async fetchCatalogFamily(slug) {
+    const res = await fetch(`${this.baseUrl}/api/catalog/${encodeURIComponent(slug)}`);
+    if (!res.ok) return { slug, variants: [] };
+    return await res.json();
+  }
+
+  async searchHfModels(query = '', format = 'all') {
+    this.hfLoadingSignal.set(true);
+    try {
+      const res = await fetch(
+        `${this.baseUrl}/api/hf/search?q=${encodeURIComponent(query || '')}&format=${encodeURIComponent(format || 'all')}`
+      );
+      if (res.ok) {
+        const data = await res.json();
+        this.hfModelsSignal.set(data.models || []);
+        return data.models || [];
+      }
+    } catch (e) {
+      // ignore offline error
+    } finally {
+      this.hfLoadingSignal.set(false);
+    }
+    return this.hfModelsSignal.get();
   }
 
   async serviceAction(action, body = {}) {

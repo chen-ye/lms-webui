@@ -8,6 +8,8 @@ from lmstudio_webui.downloads import (
     StatelessDownloadReader,
     extract_quantizations_from_hf_siblings,
     parse_hf_repo_id,
+    parse_lmstudio_catalog_html,
+    parse_lmstudio_family_variants_html,
 )
 from lmstudio_webui.service import (
     get_service_status,
@@ -139,3 +141,34 @@ def test_linux_systemd_service_registration(tmp_path: Path) -> None:
     un_res = uninstall_service(platform_override="linux", unit_dir=tmp_path)
     assert un_res["removed"] is True
     assert not unit_file.exists()
+
+
+def test_parse_lmstudio_catalog_and_family_variants() -> None:
+    sample_catalog_html = '''
+    <a data-model-page-has-downloads="true" href="/models/gemma-4">
+      <h2>Gemma 4</h2>
+      <div aria-label="Parameter sizes"><span>12B</span><span>26B</span></div>
+      <span title="Tool use"></span><span title="Vision"></span>
+      <p>Google&#x27;s open multimodal family.</p>
+    </a>
+    '''
+    fams = parse_lmstudio_catalog_html(sample_catalog_html)
+    assert len(fams) == 1
+    assert fams[0]["slug"] == "gemma-4"
+    assert fams[0]["name"] == "Gemma 4"
+    assert fams[0]["params"] == ["12B", "26B"]
+    assert fams[0]["capabilities"] == ["Tool use", "Vision"]
+    assert fams[0]["url"] == "https://lmstudio.ai/models/gemma-4"
+
+    sample_family_html = '''
+    <div>
+      <a href="/models/google/gemma-4-12b">google/gemma-4-12b</a><span>7.40 GB</span>
+      <a href="/models/google/gemma-4-26b-a4b-qat">google/gemma-4-26b-a4b-qat</a><span>15.60 GB</span>
+    </div>
+    '''
+    variants = parse_lmstudio_family_variants_html(sample_family_html)
+    assert len(variants) == 2
+    assert variants[0]["model_id"] == "google/gemma-4-12b"
+    assert variants[0]["size"] == "7.40 GB"
+    assert variants[1]["model_id"] == "google/gemma-4-26b-a4b-qat"
+    assert variants[1]["size"] == "15.60 GB"

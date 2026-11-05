@@ -43,6 +43,8 @@ class EnrichedModel(BaseModel):
     disk_paths: DiskPathsInfo = Field(default_factory=DiskPathsInfo)
     deletable: bool = False
     is_loaded: bool = False
+    catalog_url: str | None = None
+    hf_url: str | None = None
 
 
 class LoadModelRequest(BaseModel):

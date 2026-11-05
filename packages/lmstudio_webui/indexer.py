@@ -56,8 +56,67 @@ class HostModelIndex:
         return self.lmstudio_home / ".internal" / "lm-link-resume-cache.json"
 
     @property
+    def model_data_path(self) -> Path:
+        return self.lmstudio_home / ".internal" / "model-data.json"
+
+    @property
     def hub_models_dir(self) -> Path:
         return (self.lmstudio_home / "hub" / "models").resolve()
+
+    def load_model_sources(self) -> dict[str, dict[str, Any]]:
+        """Read ~/.lmstudio/.internal/model-data.json map of modelId -> source metadata."""
+        raw = _read_json_file(self.model_data_path)
+        entries = raw.get("json")
+        out: dict[str, dict[str, Any]] = {}
+        if isinstance(entries, list):
+            for item in entries:
+                if isinstance(item, list) and len(item) == 2 and isinstance(item[0], str) and isinstance(item[1], dict):
+                    src = item[1].get("source")
+                    if isinstance(src, dict):
+                        out[item[0]] = src
+        return out
+
+    def _resolve_external_links(
+        self,
+        key: str,
+        origin: str,
+        matched_idx: dict[str, Any] | None,
+        model_sources: dict[str, dict[str, Any]],
+    ) -> tuple[str | None, str | None]:
+        catalog_url: str | None = None
+        hf_url: str | None = None
+
+        src = model_sources.get(key)
+        if src:
+            if src.get("type") == "hub" and src.get("url"):
+                catalog_url = str(src["url"])
+            elif src.get("type") == "huggingface" and src.get("owner") and src.get("repo"):
+                hf_url = f"https://huggingface.co/{src['owner']}/{src['repo']}"
+
+        if matched_idx is not None:
+            idx_id = str(matched_idx.get("indexedModelIdentifier") or "")
+            if not src and idx_id in model_sources:
+                s2 = model_sources[idx_id]
+                if s2.get("type") == "hub" and s2.get("url"):
+                    catalog_url = str(s2["url"])
+                elif s2.get("type") == "huggingface" and s2.get("owner") and s2.get("repo"):
+                    hf_url = f"https://huggingface.co/{s2['owner']}/{s2['repo']}"
+
+            virtual = matched_idx.get("virtual") or {}
+            concrete_id = str(virtual.get("concreteModelIndexedModelIdentifier") or "")
+            if concrete_id and "/" in concrete_id and not hf_url:
+                parts = concrete_id.split("/")
+                hf_url = f"https://huggingface.co/{parts[0]}/{parts[1]}"
+
+            subpath = str(matched_idx.get("containingDirSubpath") or "")
+            if not hf_url and origin in ("local", "bundled") and "/" in subpath:
+                parts = subpath.split("/")
+                hf_url = f"https://huggingface.co/{parts[0]}/{parts[1]}"
+
+        if not catalog_url and origin in ("hub", "remote") and "/" in key:
+            catalog_url = f"https://lmstudio.ai/models/{key}"
+
+        return catalog_url, hf_url
 
     def get_settings(self) -> dict[str, Any]:
         return _read_json_file(self.settings_path)
@@ -315,6 +374,7 @@ class HostModelIndex:
     ) -> list[EnrichedModel]:
         index_models = self.load_index_models()
         peer_map = self.get_peer_device_map()
+        model_sources = self.load_model_sources()
         lms_cli_models = self._query_lms_ls_remote_devices() if use_lms_cli_for_peers else []
 
         # Queue of remote CLI models by (modelKey_lower, format_norm, sizeBytes)
@@ -342,6 +402,7 @@ class HostModelIndex:
             if matched is not None:
                 origin, disk_paths, deletable = self._compute_disk_paths(matched, index_models)
                 indexed_id = matched.get("indexedModelIdentifier")
+                catalog_url, hf_url = self._resolve_external_links(key, origin, matched, model_sources)
                 uid = f"{origin}:{indexed_id or key}:{fmt}:{size_bytes}:{i}"
                 enriched.append(
                     EnrichedModel(
@@ -370,6 +431,8 @@ class HostModelIndex:
                         disk_paths=disk_paths,
                         deletable=deletable,
                         is_loaded=len(loaded_instances) > 0,
+                        catalog_url=catalog_url,
+                        hf_url=hf_url,
                     )
                 )
             else:
@@ -380,6 +443,7 @@ class HostModelIndex:
                 if not dev_id and len(peer_map) == 1:
                     dev_id = next(iter(peer_map.keys()))
                 dev_name = peer_map.get(dev_id) if dev_id else None
+                catalog_url, hf_url = self._resolve_external_links(key, "remote", None, model_sources)
                 uid = f"remote:{dev_id or 'peer'}:{selected_variant or key}:{fmt}:{size_bytes}:{i}"
                 enriched.append(
                     EnrichedModel(
@@ -408,6 +472,8 @@ class HostModelIndex:
                         disk_paths=DiskPathsInfo(),
                         deletable=False,
                         is_loaded=len(loaded_instances) > 0,
+                        catalog_url=catalog_url,
+                        hf_url=hf_url,
                     )
                 )
 

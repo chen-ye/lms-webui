@@ -9,7 +9,13 @@ from fastapi.staticfiles import StaticFiles
 import httpx
 from pydantic import BaseModel
 
-from .downloads import StatelessDownloadReader, fetch_hf_quantizations
+from .downloads import (
+    StatelessDownloadReader,
+    fetch_hf_quantizations,
+    fetch_lmstudio_catalog,
+    fetch_lmstudio_catalog_family,
+    search_huggingface_models,
+)
 from .indexer import HostModelIndex, get_lmstudio_home
 from .models import (
     DeleteModelRequest,
@@ -375,6 +381,24 @@ async def get_download_status(job_id: str) -> dict[str, Any]:
 @app.get("/api/hf/quantizations")
 async def get_hf_quantizations(repo: str = Query(..., description="Hugging Face repo ID or URL")) -> dict[str, Any]:
     return await fetch_hf_quantizations(repo)
+
+
+@app.get("/api/catalog")
+async def get_catalog(q: str = Query("", description="Filter LM Studio catalog families")) -> dict[str, Any]:
+    return await fetch_lmstudio_catalog(q)
+
+
+@app.get("/api/catalog/{slug}")
+async def get_catalog_family(slug: str) -> dict[str, Any]:
+    return await fetch_lmstudio_catalog_family(slug)
+
+
+@app.get("/api/hf/search")
+async def get_hf_search(
+    q: str = Query("", description="Search query for Hugging Face GGUF/MLX models"),
+    format: str = Query("all", description="Format filter: all, gguf, or mlx"),
+) -> dict[str, Any]:
+    return await search_huggingface_models(query=q, fmt=format)
 
 
 class ServiceActionRequest(BaseModel):

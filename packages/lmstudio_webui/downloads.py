@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import html as htmllib
 import json
 from pathlib import Path
 import re
+import time
 from typing import Any
 from urllib.parse import urlparse
 import httpx
@@ -325,4 +327,316 @@ async def fetch_hf_quantizations(repo_or_url: str) -> dict[str, Any]:
         "is_hf": True,
         "has_safetensors": has_safetensors,
         "quantizations": [q.model_dump() for q in quants],
+    }
+
+
+# --- Live LM Studio Catalog & Hugging Face Discovery ---
+
+_CATALOG_CACHE: dict[str, Any] = {"ts": 0.0, "families": []}
+_FAMILY_CACHE: dict[str, tuple[float, list[dict[str, Any]]]] = {}
+
+_FALLBACK_CATALOG_FAMILIES: list[dict[str, Any]] = [
+    {
+        "slug": "gemma-4",
+        "name": "Gemma 4",
+        "params": ["5.1B", "7.9B", "12B", "26B", "31B"],
+        "capabilities": ["Tool use", "Reasoning", "Vision"],
+        "description": "Google's open multimodal & reasoning family built from Gemini 3 research.",
+        "url": "https://lmstudio.ai/models/gemma-4",
+        "variants": [
+            {"model_id": "google/gemma-4-e2b", "size": "4.20 GB", "url": "https://lmstudio.ai/models/google/gemma-4-e2b"},
+            {"model_id": "google/gemma-4-e4b", "size": "5.90 GB", "url": "https://lmstudio.ai/models/google/gemma-4-e4b"},
+            {"model_id": "google/gemma-4-12b", "size": "7.40 GB", "url": "https://lmstudio.ai/models/google/gemma-4-12b"},
+            {"model_id": "google/gemma-4-26b-a4b", "size": "15.60 GB", "url": "https://lmstudio.ai/models/google/gemma-4-26b-a4b"},
+            {"model_id": "google/gemma-4-26b-a4b-qat", "size": "15.60 GB", "url": "https://lmstudio.ai/models/google/gemma-4-26b-a4b-qat"},
+            {"model_id": "google/gemma-4-31b", "size": "19.00 GB", "url": "https://lmstudio.ai/models/google/gemma-4-31b"},
+        ],
+    },
+    {
+        "slug": "qwen3.8",
+        "name": "Qwen3.8",
+        "params": ["27B"],
+        "capabilities": ["Tool use", "Reasoning", "Vision"],
+        "description": "Dense 27B vision-language model for coding, research, and long-horizon agentic tasks.",
+        "url": "https://lmstudio.ai/models/qwen3.8",
+        "variants": [
+            {"model_id": "qwen/qwen3.8-27b", "size": "16.20 GB", "url": "https://lmstudio.ai/models/qwen/qwen3.8-27b"},
+        ],
+    },
+    {
+        "slug": "qwen3.5",
+        "name": "Qwen3.5",
+        "params": ["2B", "4B", "9B", "27B", "35B"],
+        "capabilities": ["Tool use", "Reasoning", "Vision"],
+        "description": "Multimodal and reasoning family ranging from compact 2B/4B to 35B.",
+        "url": "https://lmstudio.ai/models/qwen3.5",
+        "variants": [
+            {"model_id": "qwen/qwen3.5-4b", "size": "2.80 GB", "url": "https://lmstudio.ai/models/qwen/qwen3.5-4b"},
+            {"model_id": "qwen/qwen3.5-9b", "size": "5.80 GB", "url": "https://lmstudio.ai/models/qwen/qwen3.5-9b"},
+            {"model_id": "qwen/qwen3.5-27b", "size": "16.40 GB", "url": "https://lmstudio.ai/models/qwen/qwen3.5-27b"},
+        ],
+    },
+    {
+        "slug": "gpt-oss",
+        "name": "gpt-oss",
+        "params": ["20B", "120B"],
+        "capabilities": ["Tool use", "Reasoning"],
+        "description": "OpenAI's open-weight LLM with configurable reasoning effort and tool calling.",
+        "url": "https://lmstudio.ai/models/gpt-oss",
+        "variants": [
+            {"model_id": "openai/gpt-oss-20b", "size": "12.50 GB", "url": "https://lmstudio.ai/models/openai/gpt-oss-20b"},
+            {"model_id": "openai/gpt-oss-120b", "size": "68.00 GB", "url": "https://lmstudio.ai/models/openai/gpt-oss-120b"},
+        ],
+    },
+    {
+        "slug": "granite-4",
+        "name": "Granite 4.0",
+        "params": ["3B", "7B", "32B"],
+        "capabilities": ["Tool use"],
+        "description": "IBM's lightweight open models for RAG, tool use, coding, and structured JSON output.",
+        "url": "https://lmstudio.ai/models/granite-4",
+        "variants": [
+            {"model_id": "ibm/granite-4-micro", "size": "2.10 GB", "url": "https://lmstudio.ai/models/ibm/granite-4-micro"},
+        ],
+    },
+    {
+        "slug": "deepseek-r1",
+        "name": "deepseek-r1",
+        "params": ["7B", "8B", "14B", "32B", "70B"],
+        "capabilities": ["Tool use", "Reasoning"],
+        "description": "DeepSeek R1 reasoning models and distilled Qwen/Llama checkpoints.",
+        "url": "https://lmstudio.ai/models/deepseek-r1",
+        "variants": [
+            {"model_id": "deepseek/deepseek-r1-0528-qwen3-8b", "size": "5.20 GB", "url": "https://lmstudio.ai/models/deepseek/deepseek-r1-0528-qwen3-8b"},
+        ],
+    },
+]
+
+
+def parse_lmstudio_catalog_html(raw_html: str) -> list[dict[str, Any]]:
+    families: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    pattern = re.compile(
+        r'<a\s+[^>]*data-model-page-has-downloads="true"[^>]*href="/models/([a-zA-Z0-9._-]+)"[^>]*>(.*?)</a>',
+        re.S,
+    )
+    for m in pattern.finditer(raw_html):
+        slug, body = m.group(1), m.group(2)
+        if slug in seen:
+            continue
+        seen.add(slug)
+        title_m = re.search(r"<h2[^>]*>(.*?)</h2>", body, re.S)
+        name = (
+            htmllib.unescape(re.sub(r"<[^>]+>", "", title_m.group(1)).strip())
+            if title_m
+            else slug
+        )
+        params_block = re.search(r'aria-label="Parameter sizes"[^>]*>(.*?)</div>', body, re.S)
+        params = (
+            re.findall(r">(\d+(?:\.\d+)?[BM])</span>", params_block.group(1))
+            if params_block
+            else []
+        )
+        caps = re.findall(r'<span title="(Tool use|Reasoning|Vision)">', body)
+        desc_m = re.search(r"<p[^>]*>(.*?)</p>", body, re.S)
+        desc = (
+            htmllib.unescape(re.sub(r"<[^>]+>", "", desc_m.group(1)).strip())
+            if desc_m
+            else ""
+        )
+        families.append(
+            {
+                "slug": slug,
+                "name": name,
+                "params": params,
+                "capabilities": caps,
+                "description": desc,
+                "url": f"https://lmstudio.ai/models/{slug}",
+            }
+        )
+    return families
+
+
+def parse_lmstudio_family_variants_html(raw_html: str) -> list[dict[str, Any]]:
+    variants: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    pattern = re.compile(
+        r'href="/models/([a-zA-Z0-9._-]+/[a-zA-Z0-9._-]+)"[^>]*>\1</a>(.*?)(?=href="/models/|</section>|</div></div></div>|$)',
+        re.S,
+    )
+    for m in pattern.finditer(raw_html):
+        model_id = m.group(1)
+        if model_id in seen:
+            continue
+        seen.add(model_id)
+        tail = m.group(2)
+        sz_m = re.search(r"(\d+(?:\.\d+)?\s*(?:GB|MB))", tail)
+        variants.append(
+            {
+                "model_id": model_id,
+                "size": sz_m.group(1) if sz_m else None,
+                "url": f"https://lmstudio.ai/models/{model_id}",
+            }
+        )
+    return variants
+
+
+async def fetch_lmstudio_catalog(query: str = "") -> dict[str, Any]:
+    now = time.time()
+    families: list[dict[str, Any]] = _CATALOG_CACHE.get("families") or []
+    if not families or (now - float(_CATALOG_CACHE.get("ts") or 0.0)) > 600:
+        try:
+            async with httpx.AsyncClient(
+                timeout=6.0,
+                follow_redirects=True,
+                headers={"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0)"},
+            ) as client:
+                resp = await client.get("https://lmstudio.ai/models")
+                if resp.status_code == 200:
+                    parsed = parse_lmstudio_catalog_html(resp.text)
+                    if parsed:
+                        families = parsed
+                        _CATALOG_CACHE["families"] = families
+                        _CATALOG_CACHE["ts"] = now
+        except Exception:
+            pass
+
+    if not families:
+        families = _FALLBACK_CATALOG_FAMILIES
+
+    q = (query or "").strip().lower()
+    if q:
+        filtered = [
+            f
+            for f in families
+            if q in f["slug"].lower()
+            or q in f["name"].lower()
+            or q in (f.get("description") or "").lower()
+            or any(q in p.lower() for p in (f.get("params") or []))
+        ]
+    else:
+        filtered = families
+
+    return {
+        "catalog_url": "https://lmstudio.ai/models",
+        "families": filtered,
+    }
+
+
+async def fetch_lmstudio_catalog_family(slug: str) -> dict[str, Any]:
+    clean_slug = re.sub(r"[^a-zA-Z0-9._-]", "", slug or "")
+    now = time.time()
+    cached = _FAMILY_CACHE.get(clean_slug)
+    if cached and (now - cached[0]) < 600:
+        return {
+            "slug": clean_slug,
+            "url": f"https://lmstudio.ai/models/{clean_slug}",
+            "variants": cached[1],
+        }
+
+    variants: list[dict[str, Any]] = []
+    try:
+        async with httpx.AsyncClient(
+            timeout=6.0,
+            follow_redirects=True,
+            headers={"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0)"},
+        ) as client:
+            resp = await client.get(f"https://lmstudio.ai/models/{clean_slug}")
+            if resp.status_code == 200:
+                variants = parse_lmstudio_family_variants_html(resp.text)
+                if variants:
+                    _FAMILY_CACHE[clean_slug] = (now, variants)
+    except Exception:
+        pass
+
+    if not variants:
+        for fb in _FALLBACK_CATALOG_FAMILIES:
+            if fb["slug"] == clean_slug and fb.get("variants"):
+                variants = fb["variants"]
+                break
+
+    return {
+        "slug": clean_slug,
+        "url": f"https://lmstudio.ai/models/{clean_slug}",
+        "variants": variants,
+    }
+
+
+async def search_huggingface_models(
+    query: str = "",
+    fmt: str = "all",
+    limit: int = 20,
+) -> dict[str, Any]:
+    q = (query or "").strip()
+    fmt_low = (fmt or "all").strip().lower()
+
+    params_list: list[dict[str, Any]] = []
+    if q:
+        if fmt_low in ("gguf", "mlx"):
+            params_list.append(
+                {"search": q, "filter": fmt_low, "sort": "downloads", "direction": "-1", "limit": str(limit)}
+            )
+        else:
+            params_list.append(
+                {"search": q, "filter": "gguf", "sort": "downloads", "direction": "-1", "limit": str(limit // 2 + 4)}
+            )
+            params_list.append(
+                {"search": q, "filter": "mlx", "sort": "downloads", "direction": "-1", "limit": str(limit // 2 + 4)}
+            )
+    else:
+        if fmt_low == "gguf":
+            params_list.append(
+                {"author": "lmstudio-community", "filter": "gguf", "sort": "downloads", "direction": "-1", "limit": str(limit)}
+            )
+        elif fmt_low == "mlx":
+            params_list.append(
+                {"author": "mlx-community", "sort": "downloads", "direction": "-1", "limit": str(limit)}
+            )
+        else:
+            params_list.append(
+                {"author": "lmstudio-community", "sort": "downloads", "direction": "-1", "limit": str(limit // 2 + 4)}
+            )
+            params_list.append(
+                {"author": "mlx-community", "sort": "downloads", "direction": "-1", "limit": str(limit // 2 + 4)}
+            )
+
+    raw_items: list[dict[str, Any]] = []
+    async with httpx.AsyncClient(timeout=8.0, follow_redirects=True) as client:
+        for p in params_list:
+            try:
+                resp = await client.get("https://huggingface.co/api/models", params=p)
+                if resp.status_code == 200 and isinstance(resp.json(), list):
+                    raw_items.extend(resp.json())
+            except Exception:
+                pass
+
+    seen_ids: set[str] = set()
+    models: list[dict[str, Any]] = []
+    for item in raw_items:
+        if not isinstance(item, dict):
+            continue
+        repo_id = str(item.get("id") or item.get("modelId") or "")
+        if not repo_id or repo_id in seen_ids:
+            continue
+        seen_ids.add(repo_id)
+        tags = [str(t).lower() for t in (item.get("tags") or [])]
+        is_mlx = "mlx" in tags or "mlx" in repo_id.lower()
+        is_gguf = "gguf" in tags or "gguf" in repo_id.lower()
+        detected_fmt = "mlx" if is_mlx and not is_gguf else ("gguf" if is_gguf else "safetensors")
+        models.append(
+            {
+                "id": repo_id,
+                "url": f"https://huggingface.co/{repo_id}",
+                "downloads": int(item.get("downloads") or 0),
+                "likes": int(item.get("likes") or 0),
+                "format": detected_fmt,
+                "pipeline_tag": item.get("pipeline_tag"),
+                "vision": "image-text-to-text" in tags or "vision" in tags,
+            }
+        )
+
+    models.sort(key=lambda x: x["downloads"], reverse=True)
+    return {
+        "hf_search_url": f"https://huggingface.co/models?search={q}" if q else "https://huggingface.co/models?other=lmstudio",
+        "models": models[:limit],
     }

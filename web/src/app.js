@@ -3,15 +3,12 @@ import { LitElement, html } from 'lit';
 import { repeat } from 'lit/directives/repeat.js';
 import { SignalWatcher } from '@lit-labs/signals';
 import '@vaadin/button';
-import '@vaadin/combo-box';
 import '@vaadin/icon';
 import './components/confirm-dialog.js';
 import './components/load-dialog.js';
-import './components/loaded-dock.js';
 import './components/segmented-control.js';
 import './components/service-dialog.js';
 import { api } from './services/api.js';
-import { copyToClipboard } from './utils/clipboard.js';
 import {
   formatBytes,
   formatContextTokens,
@@ -21,76 +18,95 @@ import {
 } from './utils/format.js';
 
 const VIEW_OPTIONS = [
-  { value: 'inventory', label: 'Models Inventory' },
-  { value: 'downloads', label: 'Downloads' },
+  { value: 'inventory', label: 'Installed' },
+  { value: 'downloads', label: 'Discover & Download' },
 ];
 
-const TYPE_OPTIONS = [
-  { value: 'all', label: 'All Types' },
-  { value: 'llm', label: 'LLM' },
-  { value: 'embedding', label: 'Embedding' },
-  { value: 'decision', label: 'Decision' },
+const FILTER_OPTIONS = [
+  { value: 'all', label: 'All' },
+  { value: 'loaded', label: 'Loaded' },
+  { value: 'host', label: 'On Host' },
+  { value: 'remote', label: 'LM Link' },
+  { value: 'embedding', label: 'Embeddings' },
 ];
 
-const ORIGIN_OPTIONS = [
-  { value: 'all', label: 'All Origins' },
-  { value: 'local_all', label: 'On Host (Local + Hub)' },
-  { value: 'remote', label: 'LM Link Peers' },
-  { value: 'bundled', label: 'Bundled' },
+const DISCOVER_SOURCE_OPTIONS = [
+  { value: 'catalog', label: 'LM Studio Catalog' },
+  { value: 'hf', label: 'Hugging Face' },
+];
+
+const HF_FORMAT_OPTIONS = [
+  { value: 'all', label: 'All' },
+  { value: 'gguf', label: 'GGUF' },
+  { value: 'mlx', label: 'MLX' },
 ];
 
 export class LmsManagerApp extends SignalWatcher(LitElement) {
   static properties = {
     activeView: { type: String },
-    typeFilter: { type: String },
-    originFilter: { type: String },
-    loadedOnly: { type: Boolean },
+    activeFilter: { type: String },
     searchQuery: { type: String },
     pendingDeleteModel: { type: Object },
     downloadInput: { type: String },
     downloadQuant: { type: String },
     hfQuantOptions: { type: Array },
     hfLookupLoading: { type: Boolean },
-    hfLookupRepo: { type: String },
+    discoverSource: { type: String },
+    discoverQuery: { type: String },
+    hfFormatFilter: { type: String },
+    expandedCatalogSlug: { type: String },
+    catalogVariantsMap: { type: Object },
+    catalogVariantsLoading: { type: String },
+    expandedHfRepo: { type: String },
+    hfRepoQuantsMap: { type: Object },
+    hfRepoQuantsLoading: { type: String },
     serviceBusy: { type: Boolean },
   };
 
   createRenderRoot() {
-    return this; // Light DOM
+    return this;
   }
 
   constructor() {
     super();
     this.activeView = 'inventory';
-    this.typeFilter = 'all';
-    this.originFilter = 'all';
-    this.loadedOnly = false;
+    this.activeFilter = 'all';
     this.searchQuery = '';
     this.pendingDeleteModel = null;
+
     this.downloadInput = '';
     this.downloadQuant = '';
     this.hfQuantOptions = [];
     this.hfLookupLoading = false;
-    this.hfLookupRepo = '';
+
+    this.discoverSource = 'catalog';
+    this.discoverQuery = '';
+    this.hfFormatFilter = 'all';
+    this.expandedCatalogSlug = '';
+    this.catalogVariantsMap = {};
+    this.catalogVariantsLoading = '';
+    this.expandedHfRepo = '';
+    this.hfRepoQuantsMap = {};
+    this.hfRepoQuantsLoading = '';
+
     this.serviceBusy = false;
     this._hfTimer = null;
+    this._discoverTimer = null;
     this._pollTimer = null;
   }
 
   async connectedCallback() {
     super.connectedCallback();
-    this._onKeydown = this.handleGlobalKeydown.bind(this);
-    window.addEventListener('keydown', this._onKeydown);
-
     await Promise.all([
       api.fetchStatus(),
       api.fetchModels(),
       api.fetchDownloads(),
+      api.fetchCatalog(''),
     ]);
 
     this._pollTimer = setInterval(() => {
       const activeDl = api.activeDownloadsComputed.get();
-      if (activeDl.length > 0 || this.activeView === 'downloads') {
+      if (activeDl.length > 0) {
         api.fetchDownloads({ silent: true });
       }
     }, 2500);
@@ -98,43 +114,7 @@ export class LmsManagerApp extends SignalWatcher(LitElement) {
 
   disconnectedCallback() {
     super.disconnectedCallback();
-    if (this._onKeydown) window.removeEventListener('keydown', this._onKeydown);
     if (this._pollTimer) clearInterval(this._pollTimer);
-  }
-
-  handleGlobalKeydown(e) {
-    const path = e.composedPath();
-    const isInput = path.some((el) => {
-      if (!el.tagName) return false;
-      const t = el.tagName.toLowerCase();
-      return (
-        t === 'input' ||
-        t === 'textarea' ||
-        t === 'select' ||
-        t === 'vaadin-combo-box' ||
-        t === 'vaadin-text-field' ||
-        t === 'vaadin-number-field' ||
-        t === 'dialog'
-      );
-    });
-    if (isInput || e.metaKey || e.ctrlKey || e.altKey) return;
-
-    if (e.key === '/') {
-      e.preventDefault();
-      this.activeView = 'inventory';
-      requestAnimationFrame(() => {
-        this.querySelector('#model-search-input')?.focus();
-      });
-    } else if (e.key === 'r' || e.key === 'R') {
-      e.preventDefault();
-      this.refreshAll();
-    } else if (e.key === 'd' || e.key === 'D') {
-      e.preventDefault();
-      this.activeView = 'downloads';
-      requestAnimationFrame(() => {
-        this.querySelector('#download-model-input')?.focus();
-      });
-    }
   }
 
   async refreshAll() {
@@ -143,6 +123,17 @@ export class LmsManagerApp extends SignalWatcher(LitElement) {
       api.fetchModels(),
       api.fetchDownloads(),
     ]);
+  }
+
+  switchView(nextView) {
+    this.activeView = nextView;
+    if (nextView === 'downloads') {
+      if (this.discoverSource === 'catalog' && api.catalogFamiliesSignal.get().length === 0) {
+        api.fetchCatalog(this.discoverQuery);
+      } else if (this.discoverSource === 'hf' && api.hfModelsSignal.get().length === 0) {
+        api.searchHfModels(this.discoverQuery, this.hfFormatFilter);
+      }
+    }
   }
 
   openLoadDialog(model) {
@@ -229,7 +220,6 @@ export class LmsManagerApp extends SignalWatcher(LitElement) {
 
     if (!looksLikeRepo) {
       this.hfQuantOptions = [];
-      this.hfLookupRepo = '';
       return;
     }
 
@@ -238,7 +228,6 @@ export class LmsManagerApp extends SignalWatcher(LitElement) {
       try {
         const data = await api.fetchHfQuantizations(trimmed);
         this.hfQuantOptions = data.quantizations || [];
-        this.hfLookupRepo = data.repo_id || '';
         if (this.hfQuantOptions.length > 0 && !this.downloadQuant) {
           const preferred =
             this.hfQuantOptions.find((q) => q.quantization === 'Q4_K_M') ||
@@ -251,7 +240,7 @@ export class LmsManagerApp extends SignalWatcher(LitElement) {
       } finally {
         this.hfLookupLoading = false;
       }
-    }, 350);
+    }, 300);
   }
 
   async submitDownload(e) {
@@ -268,32 +257,88 @@ export class LmsManagerApp extends SignalWatcher(LitElement) {
     }
   }
 
-  copyText(text, e) {
-    e.preventDefault();
-    e.stopPropagation();
-    copyToClipboard(text);
-    const btn = e.currentTarget;
-    const orig = btn.innerText;
-    btn.innerText = 'Copied';
-    setTimeout(() => {
-      btn.innerText = orig;
-    }, 1000);
+  async quickDownload(model, quantization = null) {
+    try {
+      await api.startDownload({ model, quantization });
+    } catch (err) {
+      api.showToast(err.message || 'Download request failed', 'error');
+    }
+  }
+
+  onDiscoverSourceChange(source) {
+    this.discoverSource = source;
+    if (source === 'catalog') {
+      api.fetchCatalog(this.discoverQuery);
+    } else {
+      api.searchHfModels(this.discoverQuery, this.hfFormatFilter);
+    }
+  }
+
+  onDiscoverQueryInput(val) {
+    this.discoverQuery = val;
+    if (this._discoverTimer) clearTimeout(this._discoverTimer);
+    this._discoverTimer = setTimeout(() => {
+      if (this.discoverSource === 'catalog') {
+        api.fetchCatalog(this.discoverQuery);
+      } else {
+        api.searchHfModels(this.discoverQuery, this.hfFormatFilter);
+      }
+    }, 300);
+  }
+
+  onHfFormatChange(fmt) {
+    this.hfFormatFilter = fmt;
+    api.searchHfModels(this.discoverQuery, fmt);
+  }
+
+  async toggleCatalogFamily(slug) {
+    if (this.expandedCatalogSlug === slug) {
+      this.expandedCatalogSlug = '';
+      return;
+    }
+    this.expandedCatalogSlug = slug;
+    if (!this.catalogVariantsMap[slug]) {
+      this.catalogVariantsLoading = slug;
+      try {
+        const data = await api.fetchCatalogFamily(slug);
+        this.catalogVariantsMap = {
+          ...this.catalogVariantsMap,
+          [slug]: data.variants || [],
+        };
+      } finally {
+        this.catalogVariantsLoading = '';
+      }
+    }
+  }
+
+  async toggleHfRepoQuants(repoId) {
+    if (this.expandedHfRepo === repoId) {
+      this.expandedHfRepo = '';
+      return;
+    }
+    this.expandedHfRepo = repoId;
+    if (!this.hfRepoQuantsMap[repoId]) {
+      this.hfRepoQuantsLoading = repoId;
+      try {
+        const data = await api.fetchHfQuantizations(repoId);
+        this.hfRepoQuantsMap = {
+          ...this.hfRepoQuantsMap,
+          [repoId]: data.quantizations || [],
+        };
+      } finally {
+        this.hfRepoQuantsLoading = '';
+      }
+    }
   }
 
   getFilteredModels(models) {
     const q = (this.searchQuery || '').trim().toLowerCase();
-    return (models || []).filter((m) => {
-      if (this.typeFilter !== 'all' && m.type !== this.typeFilter) return false;
-      if (this.originFilter === 'local_all' && m.origin !== 'local' && m.origin !== 'hub') {
-        return false;
-      } else if (
-        this.originFilter !== 'all' &&
-        this.originFilter !== 'local_all' &&
-        m.origin !== this.originFilter
-      ) {
-        return false;
-      }
-      if (this.loadedOnly && !m.is_loaded) return false;
+    const filtered = (models || []).filter((m) => {
+      if (this.activeFilter === 'loaded' && !m.is_loaded) return false;
+      if (this.activeFilter === 'host' && m.origin !== 'local' && m.origin !== 'hub') return false;
+      if (this.activeFilter === 'remote' && m.origin !== 'remote') return false;
+      if (this.activeFilter === 'embedding' && m.type !== 'embedding') return false;
+
       if (q) {
         const hay = [
           m.display_name,
@@ -303,7 +348,6 @@ export class LmsManagerApp extends SignalWatcher(LitElement) {
           m.format,
           m.quantization?.name,
           m.device_name,
-          m.disk_paths?.concrete_dir,
         ]
           .filter(Boolean)
           .join(' ')
@@ -312,251 +356,208 @@ export class LmsManagerApp extends SignalWatcher(LitElement) {
       }
       return true;
     });
+
+    // Keep loaded models at the top of the list so no separate sidebar is needed
+    return [...filtered].sort((a, b) => Number(b.is_loaded) - Number(a.is_loaded));
   }
 
   renderOriginBadge(m) {
     if (m.origin === 'local') {
-      return html`<span class="state-badge state-running" title="Local model in ~/.lmstudio/models">Local</span>`;
+      return html`<span class="state-badge state-running">Local</span>`;
     }
     if (m.origin === 'hub') {
-      return html`<span class="state-badge state-hub" title="LM Studio Hub Catalog model">Hub Catalog</span>`;
+      return html`<span class="state-badge state-running">Hub</span>`;
     }
     if (m.origin === 'bundled') {
-      return html`<span class="state-badge state-idle" title="Bundled with LM Studio">Bundled</span>`;
+      return html`<span class="state-badge state-idle">Bundled</span>`;
     }
-    const peerLabel = m.device_name ? `LM Link • ${m.device_name}` : 'LM Link Peer';
-    return html`<span class="state-badge state-remote" title="Hosted on remote LM Link peer">${peerLabel}</span>`;
+    const peerLabel = m.device_name ? `LM Link · ${m.device_name}` : 'LM Link';
+    return html`<span class="state-badge state-idle">${peerLabel}</span>`;
   }
 
-  renderModelCard(m, busy) {
+  renderModelRow(m, busy) {
     const quantName = m.quantization?.name;
-    const bits = m.quantization?.bits_per_weight;
     const caps = m.capabilities || {};
-    const primaryDiskPath = m.disk_paths?.concrete_dir;
-    const hubManifestPath = m.disk_paths?.hub_manifest_dir;
     const isBusyLoad = busy === `load:${m.selected_variant || m.key}` || busy === `load:${m.key}`;
     const isBusyDelete = busy === `delete:${m.uid}`;
+    const capLabels = [
+      caps.vision ? 'Vision' : null,
+      caps.trained_for_tool_use ? 'Tools' : null,
+      caps.reasoning ? 'Reasoning' : null,
+    ].filter(Boolean);
 
     return html`
-      <div class="model-card ${m.is_loaded ? 'is-loaded' : ''}" data-model-uid="${m.uid}" data-model-key="${m.key}">
-        <div class="model-card-header">
-          <div class="model-card-title-group">
-            <div class="model-card-title-row">
-              <h3 class="model-card-title">${m.display_name}</h3>
-              ${this.renderOriginBadge(m)}
-              <span class="state-badge state-idle">${m.type}</span>
-              ${m.format ? html`<span class="raw-token flag">${m.format.toUpperCase()}</span>` : ''}
-              ${quantName
-                ? html`<span class="raw-token quant">${quantName}${bits ? ` (${bits}b)` : ''}</span>`
-                : ''}
-              ${m.params_string ? html`<span class="raw-token">${m.params_string}</span>` : ''}
-              <span class="raw-token">${formatBytes(m.size_bytes)}</span>
-            </div>
+      <div
+        class="model-card ${m.is_loaded ? 'is-loaded' : ''}"
+        data-model-uid="${m.uid}"
+        data-model-key="${m.key}"
+      >
+        <div class="row-main">
+          <div class="row-title-line">
+            <span
+              class="status-dot ${m.is_loaded ? 'dot-ready' : 'dot-offline'}"
+              title="${m.is_loaded ? 'Loaded in memory' : 'Not loaded'}"
+            ></span>
+            <h3 class="row-title">${m.display_name}</h3>
+            ${this.renderOriginBadge(m)}
+            ${m.format
+              ? html`<span class="raw-token">${m.format.toUpperCase()}${quantName ? ` · ${quantName}` : ''}</span>`
+              : quantName
+              ? html`<span class="raw-token">${quantName}</span>`
+              : ''}
+            ${m.params_string ? html`<span class="raw-token">${m.params_string}</span>` : ''}
+            <span class="raw-token">${formatBytes(m.size_bytes)}</span>
 
-            <div class="model-meta-row">
-              <span class="raw-token">${m.selected_variant || m.key}</span>
-              ${m.architecture ? html`<span>arch: <strong>${m.architecture}</strong></span>` : ''}
-              ${m.max_context_length
-                ? html`<span>max ctx: <strong>${formatContextTokens(m.max_context_length)}</strong></span>`
-                : ''}
-              ${caps.vision ? html`<span class="raw-token branch">Vision</span>` : ''}
-              ${caps.trained_for_tool_use ? html`<span class="raw-token branch">Tools</span>` : ''}
-              ${caps.reasoning ? html`<span class="raw-token branch">Reasoning</span>` : ''}
-              ${(m.variants || []).length > 1
-                ? html`<span class="raw-token">${m.variants.length} variants</span>`
-                : ''}
-            </div>
+            ${(m.loaded_instances || []).map((inst) => {
+              const cfg = inst.config || {};
+              return html`
+                <span class="state-badge state-running">
+                  Loaded
+                  ${cfg.context_length ? `· ${formatContextTokens(cfg.context_length)} ctx` : ''}
+                  ${cfg.flash_attention ? '· FA' : ''}
+                  ${inst.remaining_ttl_seconds !== undefined && inst.remaining_ttl_seconds !== null
+                    ? `· TTL ${formatDurationSeconds(inst.remaining_ttl_seconds)}`
+                    : ''}
+                </span>
+              `;
+            })}
           </div>
 
-          <div class="model-card-actions">
-            ${m.loaded_instances?.map(
-              (inst) => html`
-                <vaadin-button
-                  theme="small error"
-                  ?disabled=${busy === `unload:${inst.id}`}
-                  @click=${() => api.unloadModel(inst.id)}
-                  title="Unload instance ${inst.id}"
-                >
-                  <vaadin-icon ligature="eject" slot="prefix"></vaadin-icon>
-                  Unload
-                </vaadin-button>
-              `
-            )}
+          <div class="row-meta-line">
+            <span class="raw-token">${m.selected_variant || m.key}</span>
+            ${m.type !== 'llm' ? html`<span>${m.type}</span>` : ''}
+            ${m.max_context_length ? html`<span>${formatContextTokens(m.max_context_length)} max ctx</span>` : ''}
+            ${capLabels.length > 0 ? html`<span>${capLabels.join(' · ')}</span>` : ''}
 
-            <vaadin-button
-              theme="small primary"
-              data-action="open-load"
-              ?disabled=${isBusyLoad}
-              @click=${() => this.openLoadDialog(m)}
-            >
-              <vaadin-icon ligature="play_arrow" slot="prefix"></vaadin-icon>
-              ${m.is_loaded ? 'Load Instance...' : 'Load...'}
-            </vaadin-button>
-
-            <vaadin-button
-              theme="small error tertiary"
-              data-action="delete-model"
-              ?disabled=${!m.deletable || isBusyDelete}
-              title="${m.deletable
-                ? 'Unload and delete model files from local disk'
-                : m.origin === 'bundled'
-                ? 'Bundled models cannot be deleted'
-                : 'Remote LM Link models live on another host'}"
-              @click=${() => this.promptDeleteModel(m)}
-            >
-              <vaadin-icon ligature="delete"></vaadin-icon>
-            </vaadin-button>
+            ${m.catalog_url
+              ? html`
+                  <a href="${m.catalog_url}" target="_blank" rel="noreferrer" class="ext-link">
+                    <span>Catalog</span>
+                    <vaadin-icon ligature="open_in_new"></vaadin-icon>
+                  </a>
+                `
+              : ''}
+            ${m.hf_url
+              ? html`
+                  <a href="${m.hf_url}" target="_blank" rel="noreferrer" class="ext-link">
+                    <span>Hugging Face</span>
+                    <vaadin-icon ligature="open_in_new"></vaadin-icon>
+                  </a>
+                `
+              : ''}
           </div>
         </div>
 
-        ${(m.loaded_instances || []).length > 0
-          ? html`
-              <div style="display: flex; flex-wrap: wrap; gap: 6px; padding-top: 2px;">
-                ${m.loaded_instances.map((inst) => {
-                  const cfg = inst.config || {};
-                  return html`
-                    <div
-                      style="display: inline-flex; align-items: center; gap: 6px; padding: 3px 8px; border-radius: var(--lumo-border-radius-s); background: var(--lumo-success-color-10pct); border: 1px solid var(--lumo-success-color-50pct); font-size: var(--lumo-font-size-xxs);"
-                    >
-                      <span class="status-dot dot-ready"></span>
-                      <span style="font-family: var(--lumo-font-family-monospace, monospace); font-weight: 600;">
-                        Loaded: ${inst.id}
-                      </span>
-                      ${cfg.context_length
-                        ? html`<span class="raw-token">ctx ${formatContextTokens(cfg.context_length)}</span>`
-                        : ''}
-                      ${cfg.eval_batch_size
-                        ? html`<span class="raw-token">batch ${cfg.eval_batch_size}</span>`
-                        : ''}
-                      ${cfg.flash_attention ? html`<span class="raw-token">flash_attn</span>` : ''}
-                      ${cfg.offload_kv_cache_to_gpu ? html`<span class="raw-token">kv_gpu</span>` : ''}
-                      ${inst.remaining_ttl_seconds !== undefined && inst.remaining_ttl_seconds !== null
-                        ? html`<span class="raw-token">TTL ${formatDurationSeconds(inst.remaining_ttl_seconds)}</span>`
-                        : ''}
-                    </div>
-                  `;
-                })}
-              </div>
+        <div class="row-actions">
+          ${m.loaded_instances?.map(
+            (inst) => html`
+              <vaadin-button
+                theme="small error tertiary"
+                ?disabled=${busy === `unload:${inst.id}`}
+                @click=${() => api.unloadModel(inst.id)}
+                title="Unload ${inst.id}"
+              >
+                Unload
+              </vaadin-button>
             `
-          : ''}
+          )}
 
-        ${primaryDiskPath
-          ? html`
-              <div class="model-path-row">
-                <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap; min-width: 0;">
-                  <span>Disk:</span>
-                  <span class="raw-token path">${primaryDiskPath}</span>
-                  ${hubManifestPath && hubManifestPath !== primaryDiskPath
-                    ? html`
-                        <span>+ Hub Manifest:</span>
-                        <span class="raw-token path">${hubManifestPath}</span>
-                      `
-                    : ''}
-                </div>
-                <button
-                  type="button"
-                  class="chip-btn"
-                  @click=${(e) => this.copyText(primaryDiskPath, e)}
-                  title="Copy model directory path"
-                >
-                  Copy Path
-                </button>
-              </div>
-            `
-          : ''}
+          <vaadin-button
+            theme="small ${m.is_loaded ? 'tertiary' : 'primary'}"
+            data-action="open-load"
+            ?disabled=${isBusyLoad}
+            @click=${() => this.openLoadDialog(m)}
+          >
+            ${m.is_loaded ? 'Reload...' : 'Load...'}
+          </vaadin-button>
+
+          <button
+            type="button"
+            class="icon-btn"
+            data-action="delete-model"
+            ?disabled=${!m.deletable || isBusyDelete}
+            title="${m.deletable
+              ? `Delete from disk (${m.disk_paths?.concrete_dir || ''})`
+              : m.origin === 'bundled'
+              ? 'Bundled model cannot be deleted'
+              : 'Remote LM Link model lives on another host'}"
+            aria-label="Delete ${m.display_name}"
+            @click=${() => this.promptDeleteModel(m)}
+          >
+            <vaadin-icon ligature="delete" style="width: 18px; height: 18px;"></vaadin-icon>
+          </button>
+        </div>
       </div>
     `;
   }
 
   renderInventoryView(models, isLoading, busy) {
     const filtered = this.getFilteredModels(models);
+    const loadedInstances = api.loadedInstancesComputed.get();
 
     return html`
-      <div class="filter-toolbar">
-        <div class="filter-toolbar-left">
-          <segmented-control
-            id="type-filter-control"
-            .options=${TYPE_OPTIONS}
-            .value=${this.typeFilter}
-            @change=${(e) => {
-              this.typeFilter = e.detail.value;
-            }}
-          ></segmented-control>
-
-          <segmented-control
-            id="origin-filter-control"
-            .options=${ORIGIN_OPTIONS}
-            .value=${this.originFilter}
-            @change=${(e) => {
-              this.originFilter = e.detail.value;
-            }}
-          ></segmented-control>
-
-          <label class="compact-toggle">
-            <input
-              id="loaded-only-checkbox"
-              type="checkbox"
-              .checked=${this.loadedOnly}
-              @change=${(e) => {
-                this.loadedOnly = e.target.checked;
-              }}
-            />
-            <span>Loaded only</span>
-          </label>
-        </div>
-
-        <div class="filter-toolbar-right">
-          <div style="position: relative; display: inline-flex; align-items: center;">
-            <input
-              id="model-search-input"
-              type="search"
-              placeholder="Filter models, quants, peers, paths... (/)"
-              .value=${this.searchQuery}
-              @input=${(e) => {
-                this.searchQuery = e.target.value;
-              }}
-              style="
-                width: 260px;
-                height: 30px;
-                padding: 0 10px;
-                border-radius: var(--lumo-border-radius-m);
-                border: 1px solid var(--lumo-contrast-20pct);
-                background: var(--lumo-contrast-5pct);
-                color: var(--lumo-body-text-color);
-                font-size: var(--lumo-font-size-xs);
-                box-sizing: border-box;
-              "
-            />
-          </div>
-          <span style="font-size: var(--lumo-font-size-xs); color: var(--lumo-secondary-text-color);">
-            Showing <strong>${filtered.length}</strong> of ${models.length}
-          </span>
-        </div>
-      </div>
-
       <div class="main-scroll-container">
         <div class="content-max-width">
+          <div class="toolbar-row">
+            <div class="toolbar-left">
+              <input
+                id="model-search-input"
+                class="text-input"
+                type="search"
+                placeholder="Filter installed models..."
+                .value=${this.searchQuery}
+                @input=${(e) => {
+                  this.searchQuery = e.target.value;
+                }}
+                style="width: 240px;"
+              />
+
+              <segmented-control
+                id="filter-control"
+                .options=${FILTER_OPTIONS}
+                .value=${this.activeFilter}
+                @change=${(e) => {
+                  this.activeFilter = e.detail.value;
+                }}
+              ></segmented-control>
+            </div>
+
+            <div class="toolbar-right">
+              ${loadedInstances.length > 0
+                ? html`
+                    <vaadin-button
+                      theme="small contrast tertiary"
+                      ?disabled=${busy === 'unload-all'}
+                      @click=${() => api.unloadAllModels()}
+                    >
+                      Unload All (${loadedInstances.length})
+                    </vaadin-button>
+                  `
+                : ''}
+            </div>
+          </div>
+
           ${isLoading
             ? html`
-                <div class="panel-card" style="display: flex; align-items: center; justify-content: center; padding: var(--lumo-space-xl);">
+                <div class="list-surface" style="padding: var(--lumo-space-xl); text-align: center;">
                   <div class="lumo-inline-loading">
                     <span class="lumo-loader-spinner"></span>
-                    <span>Loading models from LM Studio REST API...</span>
+                    <span>Loading models...</span>
                   </div>
                 </div>
               `
             : filtered.length === 0
             ? html`
-                <div class="panel-card" style="text-align: center; color: var(--lumo-secondary-text-color); padding: var(--lumo-space-xl);">
-                  No models match the active filters.
+                <div class="list-surface" style="padding: var(--lumo-space-xl); text-align: center; color: var(--lumo-secondary-text-color);">
+                  No models match the current filter.
                 </div>
               `
             : html`
-                <div class="models-grid">
+                <div class="list-surface">
                   ${repeat(
                     filtered,
                     (m) => m.uid,
-                    (m) => this.renderModelCard(m, busy)
+                    (m) => this.renderModelRow(m, busy)
                   )}
                 </div>
               `}
@@ -565,187 +566,328 @@ export class LmsManagerApp extends SignalWatcher(LitElement) {
     `;
   }
 
-  renderDownloadsView(status, downloads, busy) {
-    const lmUrl = status?.lmstudio_url || 'http://localhost:1234';
-    const dlPayload = {
-      model: (this.downloadInput || '<catalog-id-or-hf-url>').trim(),
-      ...(this.downloadQuant ? { quantization: this.downloadQuant } : {}),
-    };
-    const curlPreview = `curl ${lmUrl}/api/v1/models/download \\\n  -H "Content-Type: application/json" \\\n  -d '${JSON.stringify(dlPayload)}'`;
+  renderCatalogBrowser(installedKeys, busy) {
+    const families = api.catalogFamiliesSignal.get() || [];
+    const loading = api.catalogLoadingSignal.get();
+
+    if (loading && families.length === 0) {
+      return html`
+        <div class="list-surface" style="padding: var(--lumo-space-xl); text-align: center;">
+          <div class="lumo-inline-loading">
+            <span class="lumo-loader-spinner"></span>
+            <span>Loading LM Studio Model Catalog...</span>
+          </div>
+        </div>
+      `;
+    }
+
+    if (families.length === 0) {
+      return html`
+        <div class="list-surface" style="padding: var(--lumo-space-xl); text-align: center; color: var(--lumo-secondary-text-color);">
+          No matching model families found in the LM Studio Catalog.
+        </div>
+      `;
+    }
+
+    return html`
+      <div class="list-surface">
+        ${families.map((fam) => {
+          const isExpanded = this.expandedCatalogSlug === fam.slug;
+          const variants = this.catalogVariantsMap[fam.slug] || [];
+          const isVarLoading = this.catalogVariantsLoading === fam.slug;
+
+          return html`
+            <div class="list-row" data-catalog-slug="${fam.slug}">
+              <div class="row-main">
+                <div class="row-title-line">
+                  <h3 class="row-title">${fam.name}</h3>
+                  ${(fam.params || []).map((p) => html`<span class="raw-token">${p}</span>`)}
+                  ${(fam.capabilities || []).map(
+                    (c) => html`<span class="state-badge state-idle">${c}</span>`
+                  )}
+                  <a href="${fam.url}" target="_blank" rel="noreferrer" class="ext-link">
+                    <span>lmstudio.ai</span>
+                    <vaadin-icon ligature="open_in_new"></vaadin-icon>
+                  </a>
+                </div>
+                ${fam.description
+                  ? html`<div class="row-meta-line">${fam.description}</div>`
+                  : ''}
+              </div>
+
+              <div class="row-actions">
+                <vaadin-button
+                  theme="small ${isExpanded ? 'contrast' : 'tertiary'}"
+                  @click=${() => this.toggleCatalogFamily(fam.slug)}
+                >
+                  ${isExpanded ? 'Hide Variants' : 'Choose Size...'}
+                </vaadin-button>
+              </div>
+            </div>
+
+            ${isExpanded
+              ? html`
+                  <div class="row-variants-drawer">
+                    ${isVarLoading
+                      ? html`
+                          <div class="lumo-inline-loading">
+                            <span class="lumo-loader-spinner"></span>
+                            <span>Loading downloadable variants...</span>
+                          </div>
+                        `
+                      : variants.length === 0
+                      ? html`
+                          <div class="variant-item-row">
+                            <span style="color: var(--lumo-secondary-text-color);">
+                              Visit <a href="${fam.url}" target="_blank" rel="noreferrer" class="ext-link">${fam.url}</a> for model identifiers.
+                            </span>
+                          </div>
+                        `
+                      : variants.map((v) => {
+                          const isInstalled = installedKeys.has(v.model_id.toLowerCase());
+                          const isDownloading = busy === `download:${v.model_id}`;
+                          return html`
+                            <div class="variant-item-row">
+                              <div class="row-title-line">
+                                <span class="raw-token">${v.model_id}</span>
+                                ${v.size ? html`<span style="color: var(--lumo-secondary-text-color);">${v.size}</span>` : ''}
+                                <a href="${v.url}" target="_blank" rel="noreferrer" class="ext-link">
+                                  <span>Details</span>
+                                  <vaadin-icon ligature="open_in_new"></vaadin-icon>
+                                </a>
+                              </div>
+                              <div>
+                                ${isInstalled
+                                  ? html`<span class="state-badge state-running">Installed</span>`
+                                  : html`
+                                      <vaadin-button
+                                        theme="small primary"
+                                        ?disabled=${isDownloading}
+                                        @click=${() => this.quickDownload(v.model_id)}
+                                      >
+                                        ${isDownloading ? 'Starting...' : 'Download'}
+                                      </vaadin-button>
+                                    `}
+                              </div>
+                            </div>
+                          `;
+                        })}
+                  </div>
+                `
+              : ''}
+          `;
+        })}
+      </div>
+    `;
+  }
+
+  renderHfBrowser(busy) {
+    const hfModels = api.hfModelsSignal.get() || [];
+    const loading = api.hfLoadingSignal.get();
+
+    if (loading && hfModels.length === 0) {
+      return html`
+        <div class="list-surface" style="padding: var(--lumo-space-xl); text-align: center;">
+          <div class="lumo-inline-loading">
+            <span class="lumo-loader-spinner"></span>
+            <span>Searching Hugging Face models...</span>
+          </div>
+        </div>
+      `;
+    }
+
+    if (hfModels.length === 0) {
+      return html`
+        <div class="list-surface" style="padding: var(--lumo-space-xl); text-align: center; color: var(--lumo-secondary-text-color);">
+          No Hugging Face models found for this query.
+        </div>
+      `;
+    }
+
+    return html`
+      <div class="list-surface">
+        ${hfModels.map((repo) => {
+          const isExpanded = this.expandedHfRepo === repo.id;
+          const quants = this.hfRepoQuantsMap[repo.id] || [];
+          const isQuantsLoading = this.hfRepoQuantsLoading === repo.id;
+          const isMlx = repo.format === 'mlx';
+          const isDownloading = busy === `download:${repo.url}`;
+
+          return html`
+            <div class="list-row" data-hf-repo="${repo.id}">
+              <div class="row-main">
+                <div class="row-title-line">
+                  <h3 class="row-title">${repo.id}</h3>
+                  <span class="raw-token">${repo.format.toUpperCase()}</span>
+                  ${repo.vision ? html`<span class="state-badge state-idle">Vision</span>` : ''}
+                  <a href="${repo.url}" target="_blank" rel="noreferrer" class="ext-link">
+                    <span>Hugging Face</span>
+                    <vaadin-icon ligature="open_in_new"></vaadin-icon>
+                  </a>
+                </div>
+                <div class="row-meta-line">
+                  <span>${repo.downloads.toLocaleString()} downloads</span>
+                  <span>${repo.likes.toLocaleString()} likes</span>
+                </div>
+              </div>
+
+              <div class="row-actions">
+                ${isMlx
+                  ? html`
+                      <vaadin-button
+                        theme="small primary"
+                        ?disabled=${isDownloading}
+                        @click=${() => this.quickDownload(repo.url)}
+                      >
+                        ${isDownloading ? 'Starting...' : 'Download MLX'}
+                      </vaadin-button>
+                    `
+                  : html`
+                      <vaadin-button
+                        theme="small ${isExpanded ? 'contrast' : 'tertiary'}"
+                        @click=${() => this.toggleHfRepoQuants(repo.id)}
+                      >
+                        ${isExpanded ? 'Hide Quants' : 'Pick Quant...'}
+                      </vaadin-button>
+                    `}
+              </div>
+            </div>
+
+            ${isExpanded
+              ? html`
+                  <div class="row-variants-drawer">
+                    ${isQuantsLoading
+                      ? html`
+                          <div class="lumo-inline-loading">
+                            <span class="lumo-loader-spinner"></span>
+                            <span>Inspecting GGUF quantizations on Hugging Face...</span>
+                          </div>
+                        `
+                      : quants.length === 0
+                      ? html`
+                          <div class="variant-item-row">
+                            <span style="color: var(--lumo-secondary-text-color);">
+                              No individual .gguf quantizations detected; download repository directly:
+                            </span>
+                            <vaadin-button
+                              theme="small primary"
+                              @click=${() => this.quickDownload(repo.url)}
+                            >
+                              Download Repo
+                            </vaadin-button>
+                          </div>
+                        `
+                      : quants.map((q) => {
+                          const dlBusy = busy === `download:${repo.url}`;
+                          return html`
+                            <div class="variant-item-row">
+                              <div class="row-title-line">
+                                <span class="raw-token quant">${q.quantization}</span>
+                                <span class="raw-token">${q.filename}</span>
+                                ${q.size_bytes
+                                  ? html`<span style="color: var(--lumo-secondary-text-color);">${formatBytes(q.size_bytes)}</span>`
+                                  : ''}
+                              </div>
+                              <vaadin-button
+                                theme="small primary"
+                                ?disabled=${dlBusy}
+                                @click=${() => this.quickDownload(repo.url, q.quantization)}
+                              >
+                                Download ${q.quantization}
+                              </vaadin-button>
+                            </div>
+                          `;
+                        })}
+                  </div>
+                `
+              : ''}
+          `;
+        })}
+      </div>
+    `;
+  }
+
+  renderDownloadsView(models, downloads, busy) {
+    const installedKeys = new Set(
+      (models || []).flatMap((m) => [
+        (m.key || '').toLowerCase(),
+        (m.selected_variant || '').toLowerCase(),
+      ])
+    );
 
     return html`
       <div class="main-scroll-container">
         <div class="content-max-width">
-          <div class="panel-card">
-            <div class="panel-header">
-              <h2 class="panel-title">Pull Model via LM Studio REST API</h2>
-              <div style="display: flex; gap: 4px; flex-wrap: wrap;">
-                <span style="font-size: var(--lumo-font-size-xxs); color: var(--lumo-secondary-text-color); align-self: center;">
-                  Examples:
-                </span>
-                ${[
-                  { label: 'ibm/granite-4-micro', model: 'ibm/granite-4-micro', quant: '' },
-                  { label: 'openai/gpt-oss-20b', model: 'openai/gpt-oss-20b', quant: '' },
-                  {
-                    label: 'HF: Qwen2.5-7B-Instruct-GGUF',
-                    model: 'https://huggingface.co/Qwen/Qwen2.5-7B-Instruct-GGUF',
-                    quant: 'Q4_K_M',
-                  },
-                ].map(
-                  (ex) => html`
-                    <button
-                      type="button"
-                      class="chip-btn"
-                      @click=${() => {
-                        this.downloadQuant = ex.quant;
-                        this.onDownloadInputChange(ex.model);
+          <form class="pull-bar" @submit=${(e) => this.submitDownload(e)}>
+            <div class="pull-field-main">
+              <label for="download-model-input">
+                Pull by LM Studio Catalog ID or Hugging Face URL
+              </label>
+              <input
+                id="download-model-input"
+                class="text-input mono"
+                type="text"
+                placeholder="e.g. google/gemma-4-12b or https://huggingface.co/Qwen/Qwen2.5-7B-Instruct-GGUF"
+                .value=${this.downloadInput}
+                @input=${(e) => this.onDownloadInputChange(e.target.value)}
+              />
+            </div>
+
+            <div class="pull-field-quant">
+              <label for="download-quant-input">
+                Quantization ${this.hfLookupLoading ? '(loading...)' : '(optional)'}
+              </label>
+              ${this.hfQuantOptions.length > 0
+                ? html`
+                    <select
+                      id="download-quant-select"
+                      class="text-input mono"
+                      .value=${this.downloadQuant}
+                      @change=${(e) => {
+                        this.downloadQuant = e.target.value;
                       }}
                     >
-                      ${ex.label}
-                    </button>
+                      <option value="">(Default)</option>
+                      ${this.hfQuantOptions.map(
+                        (q) => html`
+                          <option value="${q.quantization}" ?selected=${this.downloadQuant === q.quantization}>
+                            ${q.quantization} ${q.size_bytes ? `(${formatBytes(q.size_bytes)})` : ''}
+                          </option>
+                        `
+                      )}
+                    </select>
                   `
-                )}
-              </div>
+                : html`
+                    <input
+                      id="download-quant-input"
+                      class="text-input mono"
+                      type="text"
+                      placeholder="e.g. Q4_K_M"
+                      .value=${this.downloadQuant}
+                      @input=${(e) => {
+                        this.downloadQuant = e.target.value;
+                      }}
+                    />
+                  `}
             </div>
 
-            <form @submit=${(e) => this.submitDownload(e)} style="display: flex; flex-direction: column; gap: var(--lumo-space-m);">
-              <div class="form-grid">
-                <div style="grid-column: span 2;">
-                  <label
-                    for="download-model-input"
-                    style="display: block; font-size: var(--lumo-font-size-xs); font-weight: 600; color: var(--lumo-secondary-text-color); margin-bottom: 4px;"
-                  >
-                    LM Studio Catalog Identifier or Hugging Face Repository URL
-                  </label>
-                  <input
-                    id="download-model-input"
-                    type="text"
-                    placeholder="e.g. ibm/granite-4-micro or https://huggingface.co/lmstudio-community/..."
-                    .value=${this.downloadInput}
-                    @input=${(e) => this.onDownloadInputChange(e.target.value)}
-                    style="
-                      width: 100%;
-                      box-sizing: border-box;
-                      padding: 8px 10px;
-                      border-radius: var(--lumo-border-radius-m);
-                      border: 1px solid var(--lumo-contrast-20pct);
-                      background: var(--lumo-base-color);
-                      color: var(--lumo-body-text-color);
-                      font-family: var(--lumo-font-family-monospace, monospace);
-                      font-size: var(--lumo-font-size-s);
-                    "
-                  />
-                </div>
+            <vaadin-button
+              id="start-download-btn"
+              theme="primary"
+              ?disabled=${!this.downloadInput.trim() || busy.startsWith('download:')}
+              @click=${(e) => this.submitDownload(e)}
+            >
+              Download
+            </vaadin-button>
+          </form>
 
+          ${downloads.length > 0
+            ? html`
                 <div>
-                  <label
-                    for="download-quant-input"
-                    style="display: flex; align-items: center; justify-content: space-between; font-size: var(--lumo-font-size-xs); font-weight: 600; color: var(--lumo-secondary-text-color); margin-bottom: 4px;"
-                  >
-                    <span>Quantization (Optional for HF)</span>
-                    ${this.hfLookupLoading
-                      ? html`<span class="lumo-loader-spinner" style="width: 10px; height: 10px;"></span>`
-                      : ''}
-                  </label>
-                  ${this.hfQuantOptions.length > 0
-                    ? html`
-                        <select
-                          id="download-quant-select"
-                          .value=${this.downloadQuant}
-                          @change=${(e) => {
-                            this.downloadQuant = e.target.value;
-                          }}
-                          style="
-                            width: 100%;
-                            box-sizing: border-box;
-                            padding: 8px 10px;
-                            border-radius: var(--lumo-border-radius-m);
-                            border: 1px solid var(--lumo-contrast-20pct);
-                            background: var(--lumo-base-color);
-                            color: var(--lumo-body-text-color);
-                            font-family: var(--lumo-font-family-monospace, monospace);
-                            font-size: var(--lumo-font-size-s);
-                          "
-                        >
-                          <option value="">(Default / None)</option>
-                          ${this.hfQuantOptions.map(
-                            (q) => html`
-                              <option value="${q.quantization}" ?selected=${this.downloadQuant === q.quantization}>
-                                ${q.quantization} — ${q.size_bytes ? formatBytes(q.size_bytes) : q.filename}
-                              </option>
-                            `
-                          )}
-                        </select>
-                      `
-                    : html`
-                        <input
-                          id="download-quant-input"
-                          type="text"
-                          placeholder="e.g. Q4_K_M, Q8_0"
-                          .value=${this.downloadQuant}
-                          @input=${(e) => {
-                            this.downloadQuant = e.target.value;
-                          }}
-                          style="
-                            width: 100%;
-                            box-sizing: border-box;
-                            padding: 8px 10px;
-                            border-radius: var(--lumo-border-radius-m);
-                            border: 1px solid var(--lumo-contrast-20pct);
-                            background: var(--lumo-base-color);
-                            color: var(--lumo-body-text-color);
-                            font-family: var(--lumo-font-family-monospace, monospace);
-                            font-size: var(--lumo-font-size-s);
-                          "
-                        />
-                      `}
-                </div>
-              </div>
-
-              <div>
-                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px;">
-                  <span style="font-size: var(--lumo-font-size-xxs); font-weight: 600; color: var(--lumo-secondary-text-color); text-transform: uppercase;">
-                    REST API Request Preview
-                  </span>
-                  <button type="button" class="chip-btn" @click=${(e) => this.copyText(curlPreview, e)}>
-                    Copy curl
-                  </button>
-                </div>
-                <pre class="command-box">${curlPreview}</pre>
-              </div>
-
-              <div style="display: flex; justify-content: flex-end;">
-                <vaadin-button
-                  id="start-download-btn"
-                  theme="primary"
-                  ?disabled=${!this.downloadInput.trim() || busy === 'download'}
-                  @click=${(e) => this.submitDownload(e)}
-                >
-                  <vaadin-icon ligature="download" slot="prefix"></vaadin-icon>
-                  ${busy === 'download' ? 'Starting Download...' : 'Download Model'}
-                </vaadin-button>
-              </div>
-            </form>
-          </div>
-
-          <div class="panel-card">
-            <div class="panel-header">
-              <h2 class="panel-title">
-                Model Download Jobs (${downloads.length})
-              </h2>
-              <span style="font-size: var(--lumo-font-size-xxs); color: var(--lumo-secondary-text-color);">
-                Source: <span class="raw-token path">~/.lmstudio/.internal/download-jobs-info.json</span> + <span class="raw-token flag">/api/v1/models/download/status/:job_id</span>
-              </span>
-            </div>
-
-            ${downloads.length === 0
-              ? html`
-                  <div style="color: var(--lumo-secondary-text-color); font-size: var(--lumo-font-size-s); padding: var(--lumo-space-m) 0;">
-                    No model download jobs found in LM Studio history.
+                  <div class="section-header">
+                    <h2 class="section-title">Download Jobs (${downloads.length})</h2>
                   </div>
-                `
-              : html`
-                  <div style="display: flex; flex-direction: column; gap: var(--lumo-space-s);">
+                  <div class="list-surface">
                     ${repeat(
                       downloads,
                       (j) => j.job_id,
@@ -762,53 +904,104 @@ export class LmsManagerApp extends SignalWatcher(LitElement) {
                           : 'state-idle';
 
                         return html`
-                          <div class="surface-card" data-job-id="${j.job_id}">
-                            <div style="display: flex; align-items: center; justify-content: space-between; gap: var(--lumo-space-s); flex-wrap: wrap; margin-bottom: 6px;">
-                              <div style="display: flex; align-items: center; gap: var(--lumo-space-s); flex-wrap: wrap;">
-                                <span style="font-weight: 600; font-size: var(--lumo-font-size-s);">${j.model_id}</span>
+                          <div class="list-row" data-job-id="${j.job_id}" style="flex-direction: column; align-items: stretch; gap: 4px;">
+                            <div style="display: flex; align-items: center; justify-content: space-between; gap: var(--lumo-space-s); flex-wrap: wrap;">
+                              <div class="row-title-line">
+                                <span style="font-weight: 600;">${j.model_id}</span>
                                 <span class="state-badge ${badgeClass}">${j.status}</span>
                                 <span class="raw-token">${j.job_id}</span>
                               </div>
-                              <div style="display: flex; align-items: center; gap: var(--lumo-space-s); font-size: var(--lumo-font-size-xs); color: var(--lumo-secondary-text-color); font-family: var(--lumo-font-family-monospace, monospace);">
-                                ${j.bytes_per_second
-                                  ? html`<span>${formatSpeed(j.bytes_per_second)}</span>`
-                                  : ''}
+                              <div class="row-meta-line">
+                                ${j.bytes_per_second ? html`<span>${formatSpeed(j.bytes_per_second)}</span>` : ''}
                                 ${j.total_size_bytes
                                   ? html`<span>${formatBytes(j.downloaded_bytes || 0)} / ${formatBytes(j.total_size_bytes)} (${j.progress_pct}%)</span>`
                                   : ''}
-                              </div>
-                            </div>
-
-                            <div class="download-progress-track">
-                              <div
-                                class="download-progress-fill ${isDone ? 'completed' : isFail ? 'failed' : ''}"
-                                style="width: ${j.progress_pct || 0}%;"
-                              ></div>
-                            </div>
-
-                            <div style="display: flex; align-items: center; justify-content: space-between; gap: var(--lumo-space-s); flex-wrap: wrap; margin-top: 6px; font-size: var(--lumo-font-size-xxs); color: var(--lumo-tertiary-text-color);">
-                              <div>
-                                ${j.target_path
-                                  ? html`Target: <span class="raw-token path">${j.target_path}</span>`
-                                  : ''}
-                                ${j.error_message
-                                  ? html`<span style="color: var(--lumo-error-text-color); margin-left: 6px;">Error: ${j.error_message}</span>`
-                                  : ''}
-                              </div>
-                              <div>
                                 ${j.completed_at
-                                  ? html`Completed ${formatIsoShort(j.completed_at)}`
+                                  ? html`<span>${formatIsoShort(j.completed_at)}</span>`
                                   : j.started_at
-                                  ? html`Started ${formatIsoShort(j.started_at)}`
+                                  ? html`<span>${formatIsoShort(j.started_at)}</span>`
                                   : ''}
                               </div>
                             </div>
+
+                            ${isActive || !isDone
+                              ? html`
+                                  <div class="download-progress-track">
+                                    <div
+                                      class="download-progress-fill ${isDone ? 'completed' : isFail ? 'failed' : ''}"
+                                      style="width: ${j.progress_pct || 0}%;"
+                                    ></div>
+                                  </div>
+                                `
+                              : ''}
                           </div>
                         `;
                       }
                     )}
                   </div>
-                `}
+                </div>
+              `
+            : ''}
+
+          <div>
+            <div class="toolbar-row" style="margin-bottom: var(--lumo-space-s);">
+              <div class="toolbar-left">
+                <segmented-control
+                  id="discover-source-control"
+                  .options=${DISCOVER_SOURCE_OPTIONS}
+                  .value=${this.discoverSource}
+                  @change=${(e) => this.onDiscoverSourceChange(e.detail.value)}
+                ></segmented-control>
+
+                <input
+                  id="discover-search-input"
+                  class="text-input"
+                  type="search"
+                  placeholder="${this.discoverSource === 'catalog'
+                    ? 'Search LM Studio catalog...'
+                    : 'Search Hugging Face models...'}"
+                  .value=${this.discoverQuery}
+                  @input=${(e) => this.onDiscoverQueryInput(e.target.value)}
+                  style="width: 240px;"
+                />
+
+                ${this.discoverSource === 'hf'
+                  ? html`
+                      <segmented-control
+                        id="hf-format-control"
+                        .options=${HF_FORMAT_OPTIONS}
+                        .value=${this.hfFormatFilter}
+                        @change=${(e) => this.onHfFormatChange(e.detail.value)}
+                      ></segmented-control>
+                    `
+                  : ''}
+              </div>
+
+              <div class="toolbar-right">
+                ${this.discoverSource === 'catalog'
+                  ? html`
+                      <a href="https://lmstudio.ai/models" target="_blank" rel="noreferrer" class="ext-link">
+                        <span>Open lmstudio.ai/models</span>
+                        <vaadin-icon ligature="open_in_new"></vaadin-icon>
+                      </a>
+                    `
+                  : html`
+                      <a
+                        href="https://huggingface.co/models?other=lmstudio"
+                        target="_blank"
+                        rel="noreferrer"
+                        class="ext-link"
+                      >
+                        <span>Open Hugging Face</span>
+                        <vaadin-icon ligature="open_in_new"></vaadin-icon>
+                      </a>
+                    `}
+              </div>
+            </div>
+
+            ${this.discoverSource === 'catalog'
+              ? this.renderCatalogBrowser(installedKeys, busy)
+              : this.renderHfBrowser(busy)}
           </div>
         </div>
       </div>
@@ -823,20 +1016,17 @@ export class LmsManagerApp extends SignalWatcher(LitElement) {
     const activeDownloads = api.activeDownloadsComputed.get();
     const busy = api.busyActionSignal.get();
     const toast = api.toastSignal.get();
-
-    const localModels = models.filter((m) => m.origin === 'local' || m.origin === 'hub');
-    const localBytes = localModels.reduce((acc, m) => acc + (m.size_bytes || 0), 0);
     const svc = status?.service;
 
     const viewOptionsWithCounts = VIEW_OPTIONS.map((v) =>
       v.value === 'inventory'
-        ? { ...v, label: `Inventory (${models.length})` }
+        ? { ...v, label: `Installed (${models.length})` }
         : {
             ...v,
             label:
               activeDownloads.length > 0
-                ? `Downloads (${activeDownloads.length} active)`
-                : `Downloads (${downloads.length})`,
+                ? `Discover & Download (${activeDownloads.length} active)`
+                : 'Discover & Download',
           }
     );
 
@@ -844,23 +1034,34 @@ export class LmsManagerApp extends SignalWatcher(LitElement) {
       <div class="app-root-container">
         <header class="app-header">
           <div class="header-left">
-            <h1 class="brand-title">
-              <vaadin-icon ligature="hub" style="color: var(--lumo-primary-color); width: 20px; height: 20px;"></vaadin-icon>
-              <span>LM Studio Manager</span>
-            </h1>
-            <span class="breadcrumb-sep">/</span>
+            <h1 class="brand-title">LM Studio Models</h1>
 
             <span
               class="state-badge ${status.connected ? 'state-running' : 'state-failed'}"
               title="${status.error || status.lmstudio_url}"
             >
               <span class="status-dot ${status.connected ? 'dot-ready' : 'dot-offline'}"></span>
-              <span>${status.connected ? status.lmstudio_url : 'LM Studio Offline'}</span>
+              <span>${status.connected ? status.lmstudio_url.replace(/^https?:\/\//, '') : 'Offline'}</span>
             </span>
 
-            <span class="raw-token" title="Local models disk footprint in ${status.downloads_folder}">
-              ${localModels.length} local • ${formatBytes(localBytes)}
-            </span>
+            <a href="https://lmstudio.ai/models" target="_blank" rel="noreferrer" class="ext-link">
+              <span>Model Catalog</span>
+              <vaadin-icon ligature="open_in_new"></vaadin-icon>
+            </a>
+
+            <a href="https://huggingface.co/models?other=lmstudio" target="_blank" rel="noreferrer" class="ext-link">
+              <span>Hugging Face</span>
+              <vaadin-icon ligature="open_in_new"></vaadin-icon>
+            </a>
+          </div>
+
+          <div class="header-right">
+            <segmented-control
+              id="view-switcher-control"
+              .options=${viewOptionsWithCounts}
+              .value=${this.activeView}
+              @change=${(e) => this.switchView(e.detail.value)}
+            ></segmented-control>
 
             ${svc
               ? html`
@@ -869,84 +1070,34 @@ export class LmsManagerApp extends SignalWatcher(LitElement) {
                     type="button"
                     class="chip-btn"
                     @click=${() => this.openServiceDialog()}
-                    title="Manage background host service (${svc.service_manager})"
+                    title="Background service (${svc.service_manager})"
                   >
                     <span
                       class="status-dot ${svc.running ? 'dot-ready' : svc.installed ? 'dot-starting' : 'dot-offline'}"
-                      style="margin-right: 5px;"
                     ></span>
-                    <span>Service: ${svc.service_manager}</span>
+                    <span>Service</span>
                   </button>
                 `
               : ''}
-          </div>
 
-          <div class="header-right">
-            <segmented-control
-              id="view-switcher-control"
-              .options=${viewOptionsWithCounts}
-              .value=${this.activeView}
-              @change=${(e) => {
-                this.activeView = e.detail.value;
-              }}
-            ></segmented-control>
-
-            <vaadin-button
-              id="pull-model-header-btn"
-              theme="small ${this.activeView === 'downloads' ? 'contrast' : ''}"
-              @click=${() => {
-                this.activeView = 'downloads';
-                requestAnimationFrame(() => {
-                  this.querySelector('#download-model-input')?.focus();
-                });
-              }}
-            >
-              <vaadin-icon ligature="download" slot="prefix"></vaadin-icon>
-              <span>Pull Model</span>
-              <kbd class="btn-kbd">D</kbd>
-            </vaadin-button>
-
-            <vaadin-button
+            <button
               id="refresh-models-btn"
-              theme="small"
+              type="button"
+              class="icon-btn"
               @click=${() => this.refreshAll()}
-              title="Refresh models & downloads (R)"
+              title="Refresh"
+              aria-label="Refresh"
             >
-              <vaadin-icon ligature="refresh" slot="prefix"></vaadin-icon>
-              <span>Refresh</span>
-              <kbd class="btn-kbd">R</kbd>
-            </vaadin-button>
+              <vaadin-icon ligature="refresh" style="width: 18px; height: 18px;"></vaadin-icon>
+            </button>
           </div>
         </header>
 
-        <div class="surfaces-subheader-wrapper">
-          <loaded-dock layout="bar"></loaded-dock>
-        </div>
-
-        <div class="workspace-viewport">
-          <main class="content-primary">
-            ${this.activeView === 'downloads'
-              ? this.renderDownloadsView(status, downloads, busy)
-              : this.renderInventoryView(models, modelsLoading, busy)}
-          </main>
-
-          <aside class="surfaces-sidebar-wrapper">
-            <loaded-dock layout="sidebar"></loaded-dock>
-          </aside>
-        </div>
-
-        <footer class="app-footer">
-          <div>
-            Downloads Dir: <span class="raw-token path">${status.downloads_folder}</span>
-            &bull; Default Context: <span class="raw-token">${formatContextTokens(status.default_context_length)}</span>
-          </div>
-          <div>
-            Shortcuts: <kbd>/</kbd> Search &bull; <kbd>D</kbd> Pull Model &bull; <kbd>R</kbd> Refresh
-          </div>
-        </footer>
+        ${this.activeView === 'downloads'
+          ? this.renderDownloadsView(models, downloads, busy)
+          : this.renderInventoryView(models, modelsLoading, busy)}
 
         <load-dialog
-          .lmstudioUrl=${status.lmstudio_url || 'http://localhost:1234'}
           @submit-load=${(e) => this.handleLoadSubmit(e)}
         ></load-dialog>
 
@@ -957,11 +1108,11 @@ export class LmsManagerApp extends SignalWatcher(LitElement) {
 
         <confirm-dialog
           id="delete-model-dialog"
-          header="Delete Local Model from Disk"
+          header="Delete Local Model"
           .message=${this.pendingDeleteModel
-            ? `Are you sure you want to unload (if active) and permanently delete '${
-                this.pendingDeleteModel.display_name
-              }' (${formatBytes(this.pendingDeleteModel.size_bytes)}) from this host?`
+            ? `Unload (if active) and delete '${this.pendingDeleteModel.display_name}' (${formatBytes(
+                this.pendingDeleteModel.size_bytes
+              )}) from disk?`
             : ''}
           .paths=${this.pendingDeleteModel?.disk_paths?.delete_targets || []}
           confirmText="Delete Model"
@@ -970,20 +1121,11 @@ export class LmsManagerApp extends SignalWatcher(LitElement) {
           @cancel=${() => {
             this.pendingDeleteModel = null;
           }}
-        >
-          <vaadin-icon
-            slot="icon"
-            ligature="warning"
-            style="color: var(--lumo-error-color);"
-          ></vaadin-icon>
-        </confirm-dialog>
+        ></confirm-dialog>
 
         ${toast
           ? html`
               <div class="toast-banner toast-${toast.type}" role="status">
-                <vaadin-icon
-                  ligature="${toast.type === 'error' ? 'error' : toast.type === 'success' ? 'check_circle' : 'info'}"
-                ></vaadin-icon>
                 <span>${toast.message}</span>
               </div>
             `
