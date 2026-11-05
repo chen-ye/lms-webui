@@ -217,7 +217,6 @@ export class ConfirmDialog extends LitElement {
         <div class="dialog-footer">
           <vaadin-button
             data-role="cancel"
-            theme="tertiary"
             @click=${() => this.onCancel()}
           >
             ${this.cancelText}

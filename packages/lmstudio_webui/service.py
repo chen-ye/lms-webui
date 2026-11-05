@@ -67,6 +67,12 @@ def resolve_program_arguments(
         serve_args.extend(["--lmstudio-home", str(Path(lmstudio_home).expanduser().resolve())])
 
     if (PROJECT_DIR / "pyproject.toml").is_file():
+        venv_py = PROJECT_DIR / ".venv" / "bin" / "python"
+        if venv_py.is_file():
+            return (
+                PROJECT_DIR,
+                [str(venv_py), "-m", "lmstudio_webui.cli", *serve_args],
+            )
         uv_bin = shutil.which("uv")
         if not uv_bin:
             for cand in (
@@ -126,6 +132,8 @@ def generate_macos_plist_bytes(
         "LMS_WEBUI_PORT": str(port),
         "LMS_WEBUI_HOST": host,
     }
+    if (PROJECT_DIR / "packages").is_dir():
+        env_vars["PYTHONPATH"] = str(PROJECT_DIR / "packages")
     token = api_token or os.environ.get("LM_API_TOKEN")
     if token:
         env_vars["LM_API_TOKEN"] = token
@@ -167,6 +175,8 @@ def generate_linux_systemd_unit(
         f'Environment="LMS_WEBUI_PORT={port}"',
         f'Environment="LMS_WEBUI_HOST={host}"',
     ]
+    if (PROJECT_DIR / "packages").is_dir():
+        env_lines.append(f'Environment="PYTHONPATH={PROJECT_DIR / "packages"}"')
     token = api_token or os.environ.get("LM_API_TOKEN")
     if token:
         env_lines.append(f'Environment="LM_API_TOKEN={token}"')
@@ -282,6 +292,15 @@ def get_service_status(
     )
 
 
+def _kill_orphaned_service_processes() -> None:
+    """Ensure no orphaned lms-webui / uv wrapper processes remain bound to the port."""
+    for pattern in (r"[l]ms-webui serve", r"[l]mstudio_webui\.cli serve"):
+        try:
+            subprocess.run(["pkill", "-TERM", "-f", pattern], capture_output=True, check=False)
+        except Exception:
+            pass
+
+
 def install_service(
     port: int = 8420,
     host: str = "0.0.0.0",
@@ -317,6 +336,7 @@ def install_service(
             unit_path.write_bytes(content_bytes)
             if unit_dir is None and sys.platform == "darwin":
                 subprocess.run(commands[0], capture_output=True, check=False)
+                _kill_orphaned_service_processes()
                 subprocess.run(commands[1], capture_output=True, check=True)
                 subprocess.run(commands[2], capture_output=True, check=False)
         return {
@@ -378,6 +398,7 @@ def uninstall_service(
         if not dry_run:
             if unit_dir is None and sys.platform == "darwin":
                 subprocess.run(commands[0], capture_output=True, check=False)
+                _kill_orphaned_service_processes()
             if unit_path.exists():
                 unit_path.unlink()
         return {
@@ -425,6 +446,8 @@ def control_service(
             cmd = ["launchctl", "kickstart", "-k", f"gui/{uid}/{MACOS_LABEL}"]
 
         if not dry_run and sys.platform == "darwin":
+            if action in ("stop", "restart"):
+                _kill_orphaned_service_processes()
             res = subprocess.run(cmd, capture_output=True, text=True, check=False)
             if res.returncode != 0 and action in ("start", "restart") and unit_path.is_file():
                 subprocess.run(

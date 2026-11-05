@@ -125,7 +125,7 @@ export class ServiceDialog extends LitElement {
                       ? html`
                           <vaadin-button
                             id="service-uninstall-btn"
-                            theme="error tertiary"
+                            theme="error"
                             ?disabled=${this.busy}
                             @click=${() => this.emitAction('uninstall')}
                           >
@@ -135,14 +135,13 @@ export class ServiceDialog extends LitElement {
                       : ''}
                   </div>
                   <div class="modal-footer-actions">
-                    <vaadin-button theme="tertiary" @click=${() => this.close()}>
+                    <vaadin-button @click=${() => this.close()}>
                       Close
                     </vaadin-button>
                     ${svc.installed
                       ? html`
                           <vaadin-button
                             id="service-restart-btn"
-                            theme="contrast"
                             ?disabled=${this.busy}
                             @click=${() => this.emitAction('restart')}
                           >

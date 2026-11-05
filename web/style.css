@@ -1,4 +1,4 @@
-/* LM Studio Model Manager — Distilled Vaadin Lumo Dark UI */
+/* LM Studio Model Manager — Structured Vaadin Lumo Dark UI */
 
 body {
   margin: 0;
@@ -20,8 +20,10 @@ html, body {
 @media (prefers-reduced-motion: reduce) {
   .lumo-loader-spinner,
   .icon-btn,
+  .action-icon-btn,
   .chip-btn,
-  .list-row {
+  .list-row,
+  .model-card {
     transition: none;
     animation: none;
   }
@@ -55,32 +57,34 @@ vaadin-icon[ligature] {
   font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 20;
 }
 
-/* Tokens & Badges */
-.raw-token {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-family: var(--lumo-font-family-monospace, ui-monospace, SFMono-Regular, monospace);
-  font-size: var(--lumo-font-size-xs);
-  line-height: 1.25;
-  padding: 1px 6px;
-  border-radius: var(--lumo-border-radius-s);
+/* Tangible Vaadin Buttons (No floating ghost buttons, zero vertical margin offset) */
+vaadin-button {
+  margin: 0;
+  cursor: pointer;
+}
+
+vaadin-button:not([theme~="primary"]):not([theme~="error"]) {
   background: var(--lumo-contrast-10pct);
-  color: var(--lumo-secondary-text-color);
-  vertical-align: middle;
-  word-break: break-all;
+  border: 1px solid var(--lumo-contrast-20pct);
+  color: var(--lumo-body-text-color);
 }
 
-.raw-token.quant {
-  color: var(--lumo-primary-text-color);
-  background: var(--lumo-primary-color-10pct);
-  font-weight: 600;
+vaadin-button:not([theme~="primary"]):not([theme~="error"]):hover {
+  background: var(--lumo-contrast-20pct);
+  border-color: var(--lumo-contrast-30pct);
 }
 
-.raw-token.path {
-  color: var(--lumo-secondary-text-color);
+vaadin-button[theme~="error"]:not([theme~="primary"]) {
+  background: var(--lumo-error-color-10pct);
+  border: 1px solid var(--lumo-error-color-50pct);
+  color: var(--lumo-error-text-color);
 }
 
+vaadin-button[theme~="error"]:not([theme~="primary"]):hover {
+  background: rgba(239, 68, 68, 0.22);
+}
+
+/* State & Origin Badges (Strictly reserved for categorical status/origin) */
 .state-badge {
   display: inline-flex;
   align-items: center;
@@ -114,6 +118,14 @@ vaadin-icon[ligature] {
   background: var(--lumo-contrast-10pct);
   color: var(--lumo-secondary-text-color);
 }
+.state-hub {
+  background: rgba(56, 189, 248, 0.14);
+  color: #7dd3fc;
+}
+.state-remote {
+  background: rgba(167, 139, 250, 0.14);
+  color: #c4b5fd;
+}
 
 .status-dot {
   width: 7px;
@@ -124,6 +136,27 @@ vaadin-icon[ligature] {
 .dot-ready { background-color: var(--lumo-success-color); }
 .dot-starting { background-color: var(--lumo-warning-color); }
 .dot-offline { background-color: var(--lumo-contrast-30pct); }
+
+.raw-token {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--lumo-font-family-monospace, ui-monospace, SFMono-Regular, monospace);
+  font-size: var(--lumo-font-size-xs);
+  line-height: 1.25;
+  padding: 1px 6px;
+  border-radius: var(--lumo-border-radius-s);
+  background: var(--lumo-contrast-10pct);
+  color: var(--lumo-secondary-text-color);
+  vertical-align: middle;
+  word-break: break-all;
+}
+
+.raw-token.quant {
+  color: var(--lumo-primary-text-color);
+  background: var(--lumo-primary-color-10pct);
+  font-weight: 600;
+}
 
 /* Spinner */
 .lumo-loader-spinner {
@@ -232,7 +265,7 @@ h1.brand-title {
 }
 
 .content-max-width {
-  max-width: 1040px;
+  max-width: 1120px;
   margin: 0 auto;
   display: flex;
   flex-direction: column;
@@ -257,14 +290,14 @@ h1.brand-title {
 }
 
 .text-input {
-  height: 32px;
+  height: var(--lumo-size-s, 30px);
   padding: 0 10px;
   border-radius: var(--lumo-border-radius-m);
   border: 1px solid var(--lumo-contrast-20pct);
   background: var(--lumo-contrast-5pct);
   color: var(--lumo-body-text-color);
   font-family: var(--lumo-font-family);
-  font-size: var(--lumo-font-size-s);
+  font-size: var(--lumo-font-size-xs);
   box-sizing: border-box;
 }
 
@@ -281,12 +314,21 @@ h1.brand-title {
   outline-offset: -1px;
 }
 
-/* Flat List Container (Never nest cards inside cards) */
+/* Flat List Container */
 .list-surface {
   background: var(--lumo-contrast-5pct);
   border: 1px solid var(--lumo-contrast-10pct);
   border-radius: 12px;
   overflow: hidden;
+}
+
+.list-surface-toolbar {
+  padding: 12px var(--lumo-space-m);
+  border-bottom: 1px solid var(--lumo-contrast-10pct);
+  background: rgba(0, 0, 0, 0.12);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 }
 
 .list-row,
@@ -317,7 +359,7 @@ h1.brand-title {
 .row-main {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
   min-width: 0;
   flex: 1;
 }
@@ -334,6 +376,47 @@ h1.brand-title {
   font-weight: 600;
   color: var(--lumo-body-text-color);
   margin: 0;
+}
+
+/* Structured Key-Value Spec Strip (Replaces disorganized chip soup) */
+.spec-strip {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  row-gap: 4px;
+  font-size: var(--lumo-font-size-xs);
+  line-height: 1.3;
+}
+
+.spec-item {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  padding-right: 12px;
+  margin-right: 12px;
+  border-right: 1px solid var(--lumo-contrast-10pct);
+}
+
+.spec-item:last-child {
+  padding-right: 0;
+  margin-right: 0;
+  border-right: none;
+}
+
+.spec-label {
+  color: var(--lumo-tertiary-text-color);
+  font-size: var(--lumo-font-size-xxs);
+  font-weight: 500;
+}
+
+.spec-val {
+  color: var(--lumo-secondary-text-color);
+  font-weight: 500;
+}
+
+.spec-val.mono {
+  font-family: var(--lumo-font-family-monospace, ui-monospace, SFMono-Regular, monospace);
+  color: var(--lumo-body-text-color);
 }
 
 .row-meta-line {
@@ -371,39 +454,30 @@ h1.brand-title {
   font-size: var(--lumo-font-size-xs);
 }
 
-/* Direct Pull Bar */
-.pull-bar {
-  background: var(--lumo-contrast-5pct);
-  border: 1px solid var(--lumo-contrast-10pct);
-  border-radius: 12px;
-  padding: var(--lumo-space-m);
+/* Direct Pull Inline Row (Pixel-aligned 30px controls) */
+.pull-inline-form {
   display: flex;
   flex-wrap: wrap;
-  align-items: flex-end;
+  align-items: center;
   gap: var(--lumo-space-s);
+  padding-top: 8px;
+  border-top: 1px solid var(--lumo-contrast-10pct);
 }
 
-.pull-field-main {
-  flex: 2;
-  min-width: 240px;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.pull-field-quant {
-  flex: 1;
-  min-width: 160px;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.pull-field-main label,
-.pull-field-quant label {
+.pull-inline-label {
   font-size: var(--lumo-font-size-xs);
   font-weight: 500;
   color: var(--lumo-secondary-text-color);
+  white-space: nowrap;
+}
+
+.pull-input-model {
+  flex: 2;
+  min-width: 240px;
+}
+
+.pull-input-quant {
+  width: 170px;
 }
 
 /* Progress Bar */
@@ -449,22 +523,45 @@ h1.brand-title {
   background: var(--lumo-contrast-10pct);
 }
 
-.icon-btn:disabled {
-  opacity: 0.35;
+.action-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: var(--lumo-size-s, 30px);
+  width: var(--lumo-size-s, 30px);
+  box-sizing: border-box;
+  background: var(--lumo-contrast-5pct);
+  border: 1px solid var(--lumo-contrast-10pct);
+  color: var(--lumo-secondary-text-color);
+  cursor: pointer;
+  border-radius: var(--lumo-border-radius-m);
+  transition: color 0.15s ease, background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.action-icon-btn:hover:not(:disabled) {
+  color: var(--lumo-error-text-color);
+  background: var(--lumo-error-color-10pct);
+  border-color: var(--lumo-error-color-50pct);
+}
+
+.action-icon-btn:disabled {
+  opacity: 0.3;
   cursor: not-allowed;
 }
 
 .chip-btn {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 5px;
+  height: var(--lumo-size-s, 30px);
+  box-sizing: border-box;
   background: var(--lumo-contrast-5pct);
   border: 1px solid var(--lumo-contrast-10pct);
   border-radius: var(--lumo-border-radius-m);
   color: var(--lumo-secondary-text-color);
   font-size: var(--lumo-font-size-xs);
   font-family: var(--lumo-font-family);
-  padding: 3px 10px;
+  padding: 0 10px;
   cursor: pointer;
   transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
 }
@@ -480,14 +577,21 @@ h1.brand-title {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  height: var(--lumo-size-s, 30px);
+  box-sizing: border-box;
   font-size: var(--lumo-font-size-xs);
   color: var(--lumo-secondary-text-color);
   cursor: pointer;
   user-select: none;
-  padding: 4px 10px;
+  padding: 0 10px;
   border-radius: var(--lumo-border-radius-m);
   border: 1px solid var(--lumo-contrast-10pct);
   background: var(--lumo-contrast-5pct);
+}
+
+.compact-toggle:hover {
+  background: var(--lumo-contrast-10pct);
+  color: var(--lumo-body-text-color);
 }
 
 .compact-toggle input[type="checkbox"] {
@@ -582,7 +686,7 @@ h1.brand-title {
 
 .kv-row {
   display: flex;
-   flex-direction: column;
+  flex-direction: column;
   gap: 3px;
 }
 
@@ -622,7 +726,6 @@ h1.brand-title {
   gap: var(--lumo-space-s);
 }
 
-/* Section Heading */
 .section-header {
   display: flex;
   align-items: center;

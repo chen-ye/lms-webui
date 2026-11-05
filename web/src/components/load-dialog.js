@@ -281,7 +281,7 @@ export class LoadModelDialog extends LitElement {
                   : ''}
 
                 <div class="modal-footer">
-                  <vaadin-button theme="tertiary" @click=${() => this.close()}>
+                  <vaadin-button @click=${() => this.close()}>
                     Cancel
                   </vaadin-button>
                   <vaadin-button

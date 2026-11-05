@@ -438,7 +438,7 @@ def parse_lmstudio_catalog_html(raw_html: str) -> list[dict[str, Any]]:
             else []
         )
         caps = re.findall(r'<span title="(Tool use|Reasoning|Vision)">', body)
-        desc_m = re.search(r"<p[^>]*>(.*?)</p>", body, re.S)
+        desc_m = re.search(r"<p(?:\s[^>]*)?>(.*?)</p>", body, re.S)
         desc = (
             htmllib.unescape(re.sub(r"<[^>]+>", "", desc_m.group(1)).strip())
             if desc_m
