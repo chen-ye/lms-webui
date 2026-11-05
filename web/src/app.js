@@ -505,7 +505,7 @@ export class LmsManagerApp extends SignalWatcher(LitElement) {
           ${m.loaded_instances?.map(
             (inst) => html`
               <vaadin-button
-                theme="small error"
+                theme="small"
                 ?disabled=${busy === `unload:${inst.id}`}
                 @click=${() => api.unloadModel(inst.id)}
                 title="Unload ${inst.id}"
@@ -526,7 +526,7 @@ export class LmsManagerApp extends SignalWatcher(LitElement) {
 
           <button
             type="button"
-            class="action-icon-btn"
+            class="action-icon-btn danger"
             data-action="delete-model"
             ?disabled=${!m.deletable || isBusyDelete}
             title="${m.deletable
@@ -600,7 +600,7 @@ export class LmsManagerApp extends SignalWatcher(LitElement) {
               ${loadedInstances.length > 0
                 ? html`
                     <vaadin-button
-                      theme="small error"
+                      theme="small"
                       ?disabled=${busy === 'unload-all'}
                       @click=${() => api.unloadAllModels()}
                     >

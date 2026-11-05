@@ -539,6 +539,12 @@ h1.brand-title {
 }
 
 .action-icon-btn:hover:not(:disabled) {
+  color: var(--lumo-body-text-color);
+  background: var(--lumo-contrast-10pct);
+  border-color: var(--lumo-contrast-20pct);
+}
+
+.action-icon-btn.danger:hover:not(:disabled) {
   color: var(--lumo-error-text-color);
   background: var(--lumo-error-color-10pct);
   border-color: var(--lumo-error-color-50pct);
