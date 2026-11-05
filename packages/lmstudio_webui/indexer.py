@@ -16,6 +16,14 @@ def get_lmstudio_home(explicit_home: str | Path | None = None) -> Path:
     env_home = os.environ.get("LMSTUDIO_HOME")
     if env_home:
         return Path(env_home).expanduser().resolve()
+    pointer_file = Path.home() / ".lmstudio-home-pointer"
+    if pointer_file.is_file():
+        try:
+            pointed = pointer_file.read_text(encoding="utf-8").strip()
+            if pointed:
+                return Path(pointed).expanduser().resolve()
+        except Exception:
+            pass
     return (Path.home() / ".lmstudio").resolve()
 
 
@@ -150,9 +158,14 @@ class HostModelIndex:
 
     def _query_lms_ls_remote_devices(self) -> list[dict[str, Any]]:
         """Optionally query `lms ls --json` if `lms` binary exists to disambiguate multiple remote peers."""
-        lms_bin = self.lmstudio_home / "bin" / "lms"
-        if not lms_bin.is_file():
-            found = shutil.which("lms")
+        lms_bin: Path | None = None
+        for bin_name in ("lms.exe", "lms") if os.name == "nt" else ("lms", "lms.exe"):
+            cand = self.lmstudio_home / "bin" / bin_name
+            if cand.is_file():
+                lms_bin = cand
+                break
+        if lms_bin is None:
+            found = shutil.which("lms") or shutil.which("lms.exe")
             if not found:
                 return []
             lms_bin = Path(found)
@@ -509,15 +522,17 @@ class HostModelIndex:
                 break
             if not any(parent_resolved.is_relative_to(r) for r in allowed_roots):
                 break
-            entries = [p for p in parent.iterdir() if p.name != ".DS_Store"]
+            os_junk = {".DS_Store", "Thumbs.db", "desktop.ini"}
+            entries = [p for p in parent.iterdir() if p.name not in os_junk]
             if entries:
                 break
-            ds_store = parent / ".DS_Store"
-            if ds_store.is_file():
-                try:
-                    ds_store.unlink()
-                except Exception:
-                    pass
+            for junk_name in os_junk:
+                junk_file = parent / junk_name
+                if junk_file.is_file():
+                    try:
+                        junk_file.unlink()
+                    except Exception:
+                        pass
             try:
                 parent.rmdir()
             except Exception:

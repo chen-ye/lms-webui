@@ -24,7 +24,7 @@ app = typer.Typer(
 )
 service_app = typer.Typer(
     name="service",
-    help="Register and manage lms-webui as a persistent background service (macOS launchd or Linux systemd).",
+    help="Register and manage lms-webui as a persistent background service (macOS launchd, Linux systemd, or Windows HKCU Run + pythonw.exe).",
 )
 app.add_typer(service_app, name="service")
 
@@ -147,15 +147,15 @@ def service_install_cmd(
     platform: Optional[str] = typer.Option(
         None,
         "--platform",
-        help="Override target platform ('macos' for launchd or 'linux' for systemd)",
+        help="Override target platform ('macos', 'linux', or 'windows')",
     ),
     dry_run: bool = typer.Option(
         False,
         "--dry-run",
-        help="Print the generated service file and commands without installing",
+        help="Print the generated service configuration and commands without installing",
     ),
 ) -> None:
-    """Install and start lms-webui as a background user service on macOS (launchd) or Linux (systemd)."""
+    """Install and start lms-webui as a background user service on macOS (launchd), Linux (systemd), or Windows (HKCU Run + pythonw.exe)."""
     res = install_service(
         port=port,
         host=host,
@@ -181,7 +181,7 @@ def service_install_cmd(
 
 @service_app.command("uninstall")
 def service_uninstall_cmd(
-    platform: Optional[str] = typer.Option(None, "--platform", help="Override platform ('macos' or 'linux')"),
+    platform: Optional[str] = typer.Option(None, "--platform", help="Override platform ('macos', 'linux', or 'windows')"),
     dry_run: bool = typer.Option(False, "--dry-run", help="Show uninstall commands without executing"),
 ) -> None:
     """Stop and remove the lms-webui background service."""
@@ -193,7 +193,7 @@ def service_uninstall_cmd(
 
 @service_app.command("status")
 def service_status_cmd(
-    platform: Optional[str] = typer.Option(None, "--platform", help="Override platform ('macos' or 'linux')"),
+    platform: Optional[str] = typer.Option(None, "--platform", help="Override platform ('macos', 'linux', or 'windows')"),
     json_output: bool = typer.Option(False, "--json", help="Output JSON format"),
 ) -> None:
     """Show the installation and running status of the lms-webui background service."""
@@ -210,14 +210,14 @@ def service_status_cmd(
     console.print(f"[bold cyan]LMS WebUI Service Status ({st.platform} / {st.service_manager})[/bold cyan]")
     console.print(f"  • Service Name : [white]{st.service_name}[/white]")
     console.print(f"  • State        : {state_str}")
-    console.print(f"  • Unit File    : [dim]{st.unit_path}[/dim]")
+    console.print(f"  • Target / Key : [dim]{st.unit_path}[/dim]")
     console.print(f"  • ExecStart    : [dim]{st.exec_start}[/dim]")
     console.print(f"  • Port / Host  : [cyan]{st.host}:{st.port}[/cyan] -> [yellow]{st.lmstudio_url}[/yellow]")
 
 
 @service_app.command("start")
 def service_start_cmd(
-    platform: Optional[str] = typer.Option(None, "--platform", help="Override platform ('macos' or 'linux')"),
+    platform: Optional[str] = typer.Option(None, "--platform", help="Override platform ('macos', 'linux', or 'windows')"),
 ) -> None:
     """Start the installed lms-webui service."""
     res = control_service("start", platform_override=platform)
@@ -226,7 +226,7 @@ def service_start_cmd(
 
 @service_app.command("stop")
 def service_stop_cmd(
-    platform: Optional[str] = typer.Option(None, "--platform", help="Override platform ('macos' or 'linux')"),
+    platform: Optional[str] = typer.Option(None, "--platform", help="Override platform ('macos', 'linux', or 'windows')"),
 ) -> None:
     """Stop the running lms-webui service."""
     res = control_service("stop", platform_override=platform)
@@ -235,7 +235,7 @@ def service_stop_cmd(
 
 @service_app.command("restart")
 def service_restart_cmd(
-    platform: Optional[str] = typer.Option(None, "--platform", help="Override platform ('macos' or 'linux')"),
+    platform: Optional[str] = typer.Option(None, "--platform", help="Override platform ('macos', 'linux', or 'windows')"),
 ) -> None:
     """Restart the lms-webui service."""
     res = control_service("restart", platform_override=platform)

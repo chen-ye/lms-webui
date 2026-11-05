@@ -106,7 +106,7 @@ export class ServiceDialog extends LitElement {
 
                 <div class="kv-stack">
                   <div class="kv-row">
-                    <span class="kv-label">Unit File</span>
+                    <span class="kv-label">${svc.service_manager === 'hkcu-run' ? 'Registry Key' : 'Unit File'}</span>
                     <span class="raw-token path">${svc.unit_path}</span>
                   </div>
                   <div class="kv-row">

@@ -12,6 +12,7 @@ from lmstudio_webui.downloads import (
     parse_lmstudio_family_variants_html,
 )
 from lmstudio_webui.service import (
+    control_service,
     get_service_status,
     install_service,
     uninstall_service,
@@ -141,6 +142,41 @@ def test_linux_systemd_service_registration(tmp_path: Path) -> None:
     un_res = uninstall_service(platform_override="linux", unit_dir=tmp_path)
     assert un_res["removed"] is True
     assert not unit_file.exists()
+
+
+def test_windows_hkcu_run_service_registration(tmp_path: Path) -> None:
+    res = install_service(
+        port=8440,
+        host="127.0.0.1",
+        lmstudio_url="http://localhost:1234",
+        platform_override="windows",
+        unit_dir=tmp_path,
+    )
+    assert res["platform"] == "windows"
+    assert res["service_manager"] == "hkcu-run"
+    assert res["service_name"] == "LMStudioWebUI"
+    assert "pythonw.exe" in res["exec_start"]
+    assert any("HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run" in c for c in res["commands"])
+
+    state_file = Path(res["unit_path"])
+    assert state_file.is_file()
+    payload = json.loads(state_file.read_text(encoding="utf-8"))
+    assert payload["registry_key"] == r"HKCU\Software\Microsoft\Windows\CurrentVersion\Run\LMStudioWebUI"
+    assert payload["port"] == 8440
+
+    st = get_service_status(platform_override="windows", unit_dir=tmp_path)
+    assert st.installed is True
+    assert st.service_manager == "hkcu-run"
+    assert st.port == 8440
+    assert st.host == "127.0.0.1"
+
+    ctrl = control_service("restart", platform_override="windows", unit_dir=tmp_path, dry_run=True)
+    assert ctrl["platform"] == "windows"
+    assert "pythonw.exe" in ctrl["command"]
+
+    un_res = uninstall_service(platform_override="windows", unit_dir=tmp_path)
+    assert un_res["removed"] is True
+    assert not state_file.exists()
 
 
 def test_parse_lmstudio_catalog_and_family_variants() -> None:
