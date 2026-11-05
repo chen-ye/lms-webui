@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en" theme="dark">
+<head>
+  <!-- impeccable-disable dark-glow, repeating-stripes-gradient -- vendor vaadin lumo.css styles -->
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>LM Studio Model Manager</title>
+
+  <!-- JSPM Native Import Map -->
+  <script src="./importmap.js?v=1"></script>
+
+  <!-- Clipboard Polyfill for Insecure LAN / VPN Origins -->
+  <script type="module" src="./src/utils/clipboard.js"></script>
+
+  <!-- ES Module Shims Polyfill for Import Map Compatibility -->
+  <script async src="https://ga.jspm.io/npm:es-module-shims@2.5.1/dist/es-module-shims.js"></script>
+
+  <!-- Global Vaadin Lumo Theme & Design Tokens -->
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20,400,0,0" />
+  <link rel="stylesheet" href="./lumo/lumo.css" />
+  <link rel="stylesheet" href="./style.css?v=1" />
+</head>
+<body>
+  <lms-manager-app></lms-manager-app>
+  <script type="module" src="./src/app.js?v=1"></script>
+</body>
+</html>
