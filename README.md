@@ -1,5 +1,7 @@
 # LM Studio Model Manager (`lmstudio-webui`)
 
+![LM Studio Model Manager WebUI](docs/screenshot.png)
+
 A lightweight, stateless control-plane WebUI and host proxy around [LM Studio's v1 REST API](https://lmstudio.ai/docs/developer/rest) focused on **model management** (everything that external chat apps and agent harnesses don't expose):
 
 - **Model Inventory & Origin Resolution**: Browse LLMs, embedding models, and decision models (`GET /api/v1/models`), enriched with host index resolution (`local`, `hub` catalog virtual models, `bundled`, and remote `LM Link` peers), capabilities (`vision`, `tool_use`, `reasoning`), quantizations, and variants.
