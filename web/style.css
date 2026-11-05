@@ -1,4 +1,71 @@
-/* LM Studio Model Manager — Structured Vaadin Lumo Dark UI */
+/* LM Studio Model Manager — Aligned with LM Studio Desktop App (lmdark) Tokens */
+
+:root,
+html[theme~="dark"] {
+  /* LM Studio Desktop App (lmdark + globalSwatchesLayerRgb) */
+  --lms-bg: rgb(31, 31, 34);                 /* #1f1f22 swatch-gray-900 / lmdark background */
+  --lms-chrome: rgb(24, 24, 27);             /* #18181b swatch-gray-950 header chrome */
+  --lms-surface-1: rgb(39, 39, 43);          /* #27272b surface-1 */
+  --lms-surface-2: rgb(49, 49, 54);          /* #313136 surface-2 */
+
+  /* Vaadin Lumo Token Overrides */
+  --lumo-base-color: #1f1f22;
+  --lumo-tint-5pct: rgba(243, 245, 247, 0.035);
+  --lumo-tint-10pct: rgba(243, 245, 247, 0.07);
+  --lumo-tint-20pct: rgba(243, 245, 247, 0.12);
+  --lumo-tint-30pct: rgba(243, 245, 247, 0.20);
+  --lumo-tint-50pct: rgba(243, 245, 247, 0.35);
+  --lumo-tint: #f3f5f7;
+
+  --lumo-shade-5pct: rgba(0, 0, 0, 0.14);
+  --lumo-shade-10pct: rgba(0, 0, 0, 0.24);
+  --lumo-shade-20pct: rgba(0, 0, 0, 0.38);
+  --lumo-shade-30pct: rgba(0, 0, 0, 0.50);
+  --lumo-shade-50pct: rgba(0, 0, 0, 0.68);
+  --lumo-shade-60pct: rgba(15, 15, 17, 0.74);
+  --lumo-shade: #0f0f11;
+
+  --lumo-contrast-5pct: rgba(243, 245, 247, 0.045);
+  --lumo-contrast-10pct: rgba(243, 245, 247, 0.08);
+  --lumo-contrast-15pct: rgba(243, 245, 247, 0.12);
+  --lumo-contrast-20pct: rgba(243, 245, 247, 0.16);
+  --lumo-contrast-30pct: rgba(243, 245, 247, 0.24);
+  --lumo-contrast-50pct: rgba(243, 245, 247, 0.45);
+  --lumo-contrast: #f3f5f7;
+
+  --lumo-header-text-color: #f3f5f7;
+  --lumo-body-text-color: rgba(243, 245, 247, 0.94);
+  --lumo-secondary-text-color: rgba(243, 245, 247, 0.67);
+  --lumo-tertiary-text-color: rgba(243, 245, 247, 0.48);
+  --lumo-disabled-text-color: rgba(243, 245, 247, 0.30);
+
+  /* Brand / Primary: LM Studio Indigo (swatch-indigo-500 #615fff) */
+  --lumo-primary-color: rgb(97, 95, 255);
+  --lumo-primary-color-50pct: rgba(97, 95, 255, 0.50);
+  --lumo-primary-color-10pct: rgba(97, 95, 255, 0.15);
+  --lumo-primary-text-color: rgb(163, 179, 255);
+  --lumo-primary-contrast-color: #ffffff;
+
+  /* Success / Loaded: LM Studio Emerald (swatch-emerald-500 #00bc7d) */
+  --lumo-success-color: rgb(0, 188, 125);
+  --lumo-success-color-50pct: rgba(0, 188, 125, 0.45);
+  --lumo-success-color-10pct: rgba(0, 188, 125, 0.14);
+  --lumo-success-text-color: rgb(94, 233, 181);
+  --lumo-success-contrast-color: #ffffff;
+
+  /* Warning: LM Studio Amber (swatch-amber-500 #fe9a00) */
+  --lumo-warning-color: rgb(254, 154, 0);
+  --lumo-warning-color-10pct: rgba(254, 154, 0, 0.14);
+  --lumo-warning-text-color: rgb(255, 210, 48);
+  --lumo-warning-contrast-color: #18181b;
+
+  /* Error / Destructive: LM Studio Red (swatch-red-500 #fb2c36) */
+  --lumo-error-color: rgb(251, 44, 54);
+  --lumo-error-color-50pct: rgba(251, 44, 54, 0.45);
+  --lumo-error-color-10pct: rgba(251, 44, 54, 0.14);
+  --lumo-error-text-color: rgb(255, 162, 162);
+  --lumo-error-contrast-color: #ffffff;
+}
 
 body {
   margin: 0;
@@ -207,7 +274,7 @@ lms-manager-app {
 /* Top Header */
 .app-header {
   min-height: 48px;
-  background-color: var(--lumo-base-color);
+  background-color: var(--lms-chrome, #18181b);
   border-bottom: 1px solid var(--lumo-contrast-10pct);
   display: flex;
   flex-wrap: wrap;
@@ -316,7 +383,7 @@ h1.brand-title {
 
 /* Flat List Container */
 .list-surface {
-  background: var(--lumo-contrast-5pct);
+  background: var(--lms-surface-1, #27272b);
   border: 1px solid var(--lumo-contrast-10pct);
   border-radius: 12px;
   overflow: hidden;
